@@ -1,0 +1,217 @@
+
+import { createApp } from "vue";
+import { GraffitiRemote } from "@graffiti-garden/implementation-remote";
+import { GraffitiPlugin } from "@graffiti-garden/wrapper-vue";
+
+const UsernameDisplay = {
+  props: ['actor'],
+  computed: {
+    username() {
+      try {
+        const { pathname } = new URL(this.actor);
+        const segments = pathname.split("/").filter(Boolean);
+        return segments.length ? segments.at(-1) : this.actor;
+      } catch {
+        const m = this.actor.match(/([^/:#]+)(?=[#\/]*$)/);
+        return m ? m[1] : this.actor;
+      }
+    }
+  },
+  template: `<span class="username">@{{ username }}</span>`
+};
+
+createApp({
+  data() {
+    return {
+      newGroupName: "",
+      editGroupName: "",
+      currentGroup: null,
+      selectedGroupObject: null,
+      groupNameOverride: null,
+      channels: ["designftw"],
+      myMessage: "",
+      editingMessage: null,
+      editedContent: ""
+    };
+  },
+
+  computed: {
+    createSchema() {
+      return {
+        properties: {
+          value: {
+            required: ["activity", "object"],
+            properties: {
+              activity: { const: "Create" },
+              object: {
+                required: ["type", "name", "channel"],
+                properties: {
+                  type: { const: "Group Chat" },
+                  name: { type: "string" },
+                  channel: { type: "string" }
+                }
+              }
+            }
+          }
+        }
+      };
+    },
+
+    msgSchema() {
+      return {
+        properties: {
+          value: {
+            required: ["content", "published"],
+            properties: {
+              content: { type: "string" },
+              published: { type: "number" }
+            }
+          }
+        }
+      };
+    },
+
+    username() {
+      const actor = this.$graffitiSession?.value?.actor ?? "";
+      try {
+        const { pathname } = new URL(actor);
+        const segments = pathname.split("/").filter(Boolean);
+        return segments.length ? segments.at(-1) : actor;
+      } catch {
+        const m = actor.match(/([^/:#]+)(?=[#\/]*$)/);
+        return m ? m[1] : actor;
+      }
+    },
+
+    groupName() {
+      if (this.groupNameOverride) return this.groupNameOverride.name;
+      return this.selectedGroupObject?.value?.object?.name ?? "Unnamed Group";
+    }
+  },
+
+  methods: {
+    async createGroupChat(session) {
+      const name = this.newGroupName.trim();
+      if (!name) return;
+      await this.$graffiti.put(
+        {
+          value: {
+            activity: "Create",
+            object: {
+              type: "Group Chat",
+              name,
+              channel: crypto.randomUUID()
+            }
+          },
+          channels: ["designftw"]
+        },
+        session
+      );
+      this.newGroupName = "";
+    },
+
+    enterGroup(group) {
+      this.currentGroup = group.value.object.channel;
+      this.selectedGroupObject = group;
+      this.channels = [group.value.object.channel];
+
+      const override = this.$graffiti?.state?.find(
+        o => o.value?.name && o.value?.describes === group.value.object.channel
+      );
+      this.groupNameOverride = override?.value ?? null;
+    },
+
+    async setGroupNameOverride(session) {
+      const name = this.editGroupName.trim();
+      if (!name || !this.currentGroup) return;
+    
+      const createObj = this.$graffiti.state.find(
+        o => o.value?.activity === "Create" &&
+             o.value?.object?.channel === this.currentGroup
+      );
+    
+      if (createObj) {
+        await this.$graffiti.patch(
+          {
+            value: [
+              { op: "replace", path: "/object/name", value: name }
+            ]
+          },
+          createObj,
+          session
+        );
+      }
+    
+      await this.$graffiti.put({
+        value: {
+          name,
+          describes: this.currentGroup
+        },
+        channels: [this.currentGroup]
+      }, session);
+    
+      this.groupNameOverride = { name };
+      this.editGroupName = "";
+    
+      if (this.selectedGroupObject?.value?.object) {
+        this.selectedGroupObject.value.object.name = name;
+      }
+    },
+
+    exitGroup() {
+      this.currentGroup = null;
+      this.channels = ["designftw"];
+    },
+
+    async renameGroup(session) {
+      const name = this.editGroupName.trim();
+      if (!name || !this.currentGroup) return;
+      const createObj = this.$graffiti.state.find(
+        o => o.value?.activity === "Create" && o.value?.object?.channel === this.currentGroup
+      );
+      if (!createObj) return;
+      await this.$graffiti.patch(
+        {
+          value: [
+            { op: "replace", path: "/object/name", value: name }
+          ]
+        },
+        createObj,
+        session
+      );
+      this.editGroupName = "";
+    },
+
+    async sendMessage(session) {
+      const text = this.myMessage.trim();
+      if (!text) return;
+      await this.$graffiti.put(
+        {
+          value: { content: text, published: Date.now() },
+          channels: this.channels
+        },
+        session
+      );
+      this.myMessage = "";
+    },
+
+    async deleteMessage(message, session) {
+      await this.$graffiti.delete(message, session);
+    },
+
+    async editMessage(message, newContent, session) {
+      const content = newContent.trim();
+      if (!content) return;
+      await this.$graffiti.patch(
+        { value: [{ op: "replace", path: "/content", value: content }] },
+        message,
+        session
+      );
+      this.editingMessage = null;
+      this.editedContent = "";
+    }
+  }
+})
+.component('username-display', UsernameDisplay)
+  .use(GraffitiPlugin, { graffiti: new GraffitiRemote() })
+.mount("#app");
