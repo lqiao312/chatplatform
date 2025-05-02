@@ -130,3 +130,10 @@ font-size: 1rem;
 .profile-editor input {
   margin-bottom: 0.5rem;
 }
+
+
+.top-right {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 1rem;
+}
