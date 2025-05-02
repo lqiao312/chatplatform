@@ -31,7 +31,14 @@ createApp({
       channels: ["designftw"],
       myMessage: "",
       editingMessage: null,
-      editedContent: ""
+      editedContent: "",
+      showProfileEditor: false,
+      profile: {
+        name: "",
+        pronouns: "",
+        describes: ""
+      },
+
     };
   },
 
@@ -199,6 +206,67 @@ createApp({
       await this.$graffiti.delete(message, session);
     },
 
+    async saveProfile() {
+      const session = this.$graffitiSession?.value;
+      if (!session) return;
+    
+      const profile = {
+        name: this.profile.name,
+        pronouns: this.profile.pronouns,
+        describes: this.profile.describes || session.actor,
+        published: Date.now()
+      };
+    
+      await this.$graffiti.put(
+        { value: profile, channels: [session.actor] },
+        session
+      );
+    
+      await this.loadProfile(); // <- ADD THIS LINE to reflect latest profile
+    
+      this.showProfileEditor = false;
+    },
+
+    scrollToProfile() {
+      this.$nextTick(() => {
+        const el = document.getElementById("profile-editor");
+        if (el) el.scrollIntoView({ behavior: "smooth" });
+      });
+    },
+
+    async loadProfile() {
+      const session = this.$graffitiSession?.value;
+      if (!session) return;
+
+      const actorChannel = session.actor;
+
+      const profiles = await this.$graffiti.query({
+        channels: [actorChannel],
+        schema: {
+          properties: {
+            value: {
+              required: ["name", "published"],
+              properties: {
+                name: { type: "string" },
+                pronouns: { type: "string" },
+                describes: { type: "string" },
+                published: { type: "number" }
+              }
+            }
+          }
+        }
+      });
+
+      const latest = profiles.sort((a, b) => b.value.published - a.value.published)[0];
+      if (latest) {
+        this.profile = {
+          name: latest.value.name || "",
+          pronouns: latest.value.pronouns || "",
+          describes: latest.value.describes || actorChannel
+        };
+      }
+    },
+    
     async editMessage(message, newContent, session) {
       const content = newContent.trim();
       if (!content) return;
@@ -210,8 +278,19 @@ createApp({
       this.editingMessage = null;
       this.editedContent = "";
     }
+  },
+
+watch: {
+  '$graffitiSession.value': {
+    handler(newSession) {
+      if (newSession) {
+        this.loadProfile();
+      }
+    },
+    immediate: true
   }
+}
 })
 .component('username-display', UsernameDisplay)
-  .use(GraffitiPlugin, { graffiti: new GraffitiRemote() })
+.use(GraffitiPlugin, { graffiti: new GraffitiRemote() })
 .mount("#app");
