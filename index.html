@@ -29,7 +29,12 @@
     <button v-else @click="$graffiti.logout($graffitiSession.value)">Log Out</button>
     <p v-if="$graffitiSession.value">Logged in as <username-display :actor="$graffitiSession.value.actor" /></p>
 
-    <template v-if="$graffitiSession.value">
+    
+<template v-if="$graffitiSession.value">
+  <div class="top-right">
+    <button @click="showProfileEditor = !showProfileEditor; if (!showProfileEditor) scrollToProfile()">Profile</button>
+  </div>
+
       <div class="chat-container">
         <aside class="chat-sidebar">
           <h2>Create Group</h2>
@@ -106,6 +111,19 @@
           </graffiti-discover>
         </main>
       </div>
+      <div id="profile-editor" class="profile-editor" v-if="showProfileEditor">
+  <h2>Edit Profile</h2>
+  <input v-model="profile.name" placeholder="Name" />
+  <input v-model="profile.pronouns" placeholder="Pronouns" />
+  <input v-model="profile.describes" placeholder="Describes (link)" />
+  <button @click="saveProfile">Save Profile</button>
+  <div>
+    <h3>Current Profile</h3>
+    <p><strong>Name:</strong> {{ profile.name }}</p>
+    <p><strong>Pronouns:</strong> {{ profile.pronouns }}</p>
+    <p><strong>Describes:</strong> {{ profile.describes }}</p>
+  </div>
+</div>
     </template>
   </div>
 
