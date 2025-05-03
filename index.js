@@ -1,10 +1,9 @@
-
 import { createApp } from "vue";
 import { GraffitiRemote } from "@graffiti-garden/implementation-remote";
 import { GraffitiPlugin } from "@graffiti-garden/wrapper-vue";
 
 const UsernameDisplay = {
-  props: ['actor'],
+  props: ["actor"],
   computed: {
     username() {
       try {
@@ -15,9 +14,9 @@ const UsernameDisplay = {
         const m = this.actor.match(/([^/:#]+)(?=[#\/]*$)/);
         return m ? m[1] : this.actor;
       }
-    }
+    },
   },
-  template: `<span class="username">@{{ username }}</span>`
+  template: `<span class="username">@{{ username }}</span>`,
 };
 
 createApp({
@@ -29,16 +28,17 @@ createApp({
       selectedGroupObject: null,
       groupNameOverride: null,
       channels: ["designftw"],
+
       myMessage: "",
       editingMessage: null,
       editedContent: "",
+
       showProfileEditor: false,
       profile: {
         name: "",
         pronouns: "",
-        describes: ""
+        describes: "",
       },
-
     };
   },
 
@@ -55,12 +55,12 @@ createApp({
                 properties: {
                   type: { const: "Group Chat" },
                   name: { type: "string" },
-                  channel: { type: "string" }
-                }
-              }
-            }
-          }
-        }
+                  channel: { type: "string" },
+                },
+              },
+            },
+          },
+        },
       };
     },
 
@@ -71,10 +71,10 @@ createApp({
             required: ["content", "published"],
             properties: {
               content: { type: "string" },
-              published: { type: "number" }
-            }
-          }
-        }
+              published: { type: "number" },
+            },
+          },
+        },
       };
     },
 
@@ -93,24 +93,21 @@ createApp({
     groupName() {
       if (this.groupNameOverride) return this.groupNameOverride.name;
       return this.selectedGroupObject?.value?.object?.name ?? "Unnamed Group";
-    }
+    },
   },
 
   methods: {
     async createGroupChat(session) {
       const name = this.newGroupName.trim();
       if (!name) return;
+
       await this.$graffiti.put(
         {
           value: {
             activity: "Create",
-            object: {
-              type: "Group Chat",
-              name,
-              channel: crypto.randomUUID()
-            }
+            object: { type: "Group Chat", name, channel: crypto.randomUUID() },
           },
-          channels: ["designftw"]
+          channels: ["designftw"],
         },
         session
       );
@@ -123,7 +120,7 @@ createApp({
       this.channels = [group.value.object.channel];
 
       const override = this.$graffiti?.state?.find(
-        o => o.value?.name && o.value?.describes === group.value.object.channel
+        (o) => o.value?.name && o.value?.describes === group.value.object.channel
       );
       this.groupNameOverride = override?.value ?? null;
     },
@@ -133,70 +130,40 @@ createApp({
       if (!name || !this.currentGroup) return;
     
       const createObj = this.$graffiti.state.find(
-        o => o.value?.activity === "Create" &&
-             o.value?.object?.channel === this.currentGroup
+        o =>
+          o.value?.activity === "Create" &&
+          o.value?.object?.channel === this.currentGroup
       );
     
       if (createObj) {
         await this.$graffiti.patch(
-          {
-            value: [
-              { op: "replace", path: "/object/name", value: name }
-            ]
-          },
+          { value: [{ op: "replace", path: "/object/name", value: name }] },
           createObj,
           session
         );
+        createObj.value.object.name = name;
       }
     
-      await this.$graffiti.put({
-        value: {
-          name,
-          describes: this.currentGroup
-        },
-        channels: [this.currentGroup]
-      }, session);
+      await this.$graffiti.put(
+        { value: { name, describes: this.currentGroup }, channels: [this.currentGroup] },
+        session
+      );
     
       this.groupNameOverride = { name };
-      this.editGroupName = "";
     
-      if (this.selectedGroupObject?.value?.object) {
-        this.selectedGroupObject.value.object.name = name;
-      }
-    },
+      this.editGroupName = "";
+    },    
 
     exitGroup() {
       this.currentGroup = null;
       this.channels = ["designftw"];
     },
 
-    async renameGroup(session) {
-      const name = this.editGroupName.trim();
-      if (!name || !this.currentGroup) return;
-      const createObj = this.$graffiti.state.find(
-        o => o.value?.activity === "Create" && o.value?.object?.channel === this.currentGroup
-      );
-      if (!createObj) return;
-      await this.$graffiti.patch(
-        {
-          value: [
-            { op: "replace", path: "/object/name", value: name }
-          ]
-        },
-        createObj,
-        session
-      );
-      this.editGroupName = "";
-    },
-
     async sendMessage(session) {
       const text = this.myMessage.trim();
       if (!text) return;
       await this.$graffiti.put(
-        {
-          value: { content: text, published: Date.now() },
-          channels: this.channels
-        },
+        { value: { content: text, published: Date.now() }, channels: this.channels },
         session
       );
       this.myMessage = "";
@@ -206,67 +173,6 @@ createApp({
       await this.$graffiti.delete(message, session);
     },
 
-    async saveProfile() {
-      const session = this.$graffitiSession?.value;
-      if (!session) return;
-    
-      const profile = {
-        name: this.profile.name,
-        pronouns: this.profile.pronouns,
-        describes: this.profile.describes || session.actor,
-        published: Date.now()
-      };
-    
-      await this.$graffiti.put(
-        { value: profile, channels: [session.actor] },
-        session
-      );
-    
-      await this.loadProfile(); // <- ADD THIS LINE to reflect latest profile
-    
-      this.showProfileEditor = false;
-    },
-
-    scrollToProfile() {
-      this.$nextTick(() => {
-        const el = document.getElementById("profile-editor");
-        if (el) el.scrollIntoView({ behavior: "smooth" });
-      });
-    },
-
-    async loadProfile() {
-      const session = this.$graffitiSession?.value;
-      if (!session) return;
-
-      const actorChannel = session.actor;
-
-      const profiles = await this.$graffiti.query({
-        channels: [actorChannel],
-        schema: {
-          properties: {
-            value: {
-              required: ["name", "published"],
-              properties: {
-                name: { type: "string" },
-                pronouns: { type: "string" },
-                describes: { type: "string" },
-                published: { type: "number" }
-              }
-            }
-          }
-        }
-      });
-
-      const latest = profiles.sort((a, b) => b.value.published - a.value.published)[0];
-      if (latest) {
-        this.profile = {
-          name: latest.value.name || "",
-          pronouns: latest.value.pronouns || "",
-          describes: latest.value.describes || actorChannel
-        };
-      }
-    },
-    
     async editMessage(message, newContent, session) {
       const content = newContent.trim();
       if (!content) return;
@@ -277,20 +183,73 @@ createApp({
       );
       this.editingMessage = null;
       this.editedContent = "";
-    }
-  },
+    },
 
-watch: {
-  '$graffitiSession.value': {
-    handler(newSession) {
-      if (newSession) {
-        this.loadProfile();
+    async saveProfile() {
+      const session = this.$graffitiSession?.value;
+      if (!session) return;
+
+      const profile = {
+        name: this.profile.name,
+        pronouns: this.profile.pronouns,
+        describes: this.profile.describes || session.actor,
+        published: Date.now(),
+      };
+
+      await this.$graffiti.put({ value: profile, channels: [session.actor] }, session);
+      await this.loadProfile();
+      this.showProfileEditor = false;
+    },
+
+    async loadProfile() {
+      const session = this.$graffitiSession?.value;
+      if (!session) return;
+
+      const actorChannel = session.actor;
+      const profiles = await this.$graffiti.query({
+        channels: [actorChannel],
+        schema: {
+          properties: {
+            value: {
+              required: ["name", "published"],
+              properties: {
+                name: { type: "string" },
+                pronouns: { type: "string" },
+                describes: { type: "string" },
+                published: { type: "number" },
+              },
+            },
+          },
+        },
+      });
+
+      const latest = profiles.sort((a, b) => b.value.published - a.value.published)[0];
+      if (latest) {
+        this.profile = {
+          name: latest.value.name || "",
+          pronouns: latest.value.pronouns || "",
+          describes: latest.value.describes || actorChannel,
+        };
       }
     },
-    immediate: true
-  }
-}
+
+    scrollToProfile() {
+      this.$nextTick(() => {
+        const el = document.getElementById("profile-editor");
+        if (el) el.scrollIntoView({ behavior: "smooth" });
+      });
+    },
+  },
+
+  watch: {
+    "$graffitiSession.value": {
+      handler(s) {
+        if (s) this.loadProfile();
+      },
+      immediate: true,
+    },
+  },
 })
-.component('username-display', UsernameDisplay)
-.use(GraffitiPlugin, { graffiti: new GraffitiRemote() })
-.mount("#app");
+  .component("username-display", UsernameDisplay)
+  .use(GraffitiPlugin, { graffiti: new GraffitiRemote() })
+  .mount("#app");
