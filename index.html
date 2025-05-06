@@ -1,4 +1,3 @@
-
 <!doctype html>
 <html lang="en">
 <head>
@@ -25,15 +24,15 @@
   <div id="app">
     <h1>DesignFTW</h1>
 
-    <button v-if="!$graffitiSession.value" @click="$graffiti.login()">Log In</button>
+    <button v-if="!$graffitiSession.value" @click="startLogin()"> Log In </button>
+ 
     <button v-else @click="$graffiti.logout($graffitiSession.value)">Log Out</button>
     <p v-if="$graffitiSession.value">Logged in as <username-display :actor="$graffitiSession.value.actor" /></p>
 
-    
-<template v-if="$graffitiSession.value">
-  <div class="top-right">
-    <button @click="showProfileEditor = !showProfileEditor; if (!showProfileEditor) scrollToProfile()">Profile</button>
-  </div>
+    <div v-if="$graffitiSession.value">
+      <div class="top-right">
+        <button @click="openProfile()">Profile</button>
+      </div>
 
       <div class="chat-container">
         <aside class="chat-sidebar">
@@ -44,19 +43,20 @@
           </form>
 
           <h2>Groups</h2>
-            <graffiti-discover
-            v-slot="{ objects: groups }"
+          <graffiti-discover
             :channels="['designftw']"
             :schema="createSchema"
-            >
+            v-slot="{ objects }"
+          >
             <ul>
-                <li v-for="g in groups" :key="g.url">
+              <li v-for="g in sortedGroups" :key="g.url">
                 <button @click="enterGroup(g)">
-                    {{ g.value.object.name }}
+                  {{ g.value.object.name }}
                 </button>
-                </li>
+              </li>
             </ul>
-            </graffiti-discover>
+          </graffiti-discover>
+
         </aside>
 
         <main class="chat-main" v-if="currentGroup">
@@ -79,7 +79,7 @@
             :schema="msgSchema"
           >
             <ul class="message-list">
-              <li v-for="m in msgs.sort((a,b)=>a.value.published-b.value.published)" :key="m.url">
+              <li v-for="m in msgs.sort((a, b) => b.value.published - a.value.published)" :key="m.url">
                 <template v-if="editingMessage === m">
                   <input
                     class="message-content"
@@ -112,21 +112,22 @@
         </main>
       </div>
       <div id="profile-editor" class="profile-editor" v-if="showProfileEditor">
-  <h2>Edit Profile</h2>
-  <input v-model="profile.name" placeholder="Name" />
-  <input v-model="profile.pronouns" placeholder="Pronouns" />
-  <input v-model="profile.describes" placeholder="Describes (link)" />
-  <button @click="saveProfile">Save Profile</button>
-  <div>
-    <h3>Current Profile</h3>
-    <p><strong>Name:</strong> {{ profile.name }}</p>
-    <p><strong>Pronouns:</strong> {{ profile.pronouns }}</p>
-    <p><strong>Describes:</strong> {{ profile.describes }}</p>
-  </div>
-</div>
-    </template>
+        <h2>Edit Profile</h2>
+        <input v-model="profile.name" placeholder="Name" />
+        <input v-model="profile.pronouns" placeholder="Pronouns" />
+        <input v-model="profile.describes" placeholder="Describes (link)" />
+        <button @click="saveProfile">Save Profile</button>
+
+        <div>
+          <h3>Current Profile</h3>
+          <p><strong>Name:</strong> {{ profile.name }}</p>
+          <p><strong>Pronouns:</strong> {{ profile.pronouns }}</p>
+          <p><strong>Describes:</strong> {{ profile.describes }}</p>
+        </div>
+      </div>
+    </div>
   </div>
 
-  <script type="module" src="./index.js"></script>
+  <script type="module" src="index.js"></script>
 </body>
 </html>
