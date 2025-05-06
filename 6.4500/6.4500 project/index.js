@@ -280,5 +280,5 @@ createApp({
   },
 })
 .component("username-display", UsernameDisplay)
-.use(GraffitiPlugin, { graffiti: new GraffitiRemote() })
+.use(GraffitiPlugin, { graffiti: new GraffitiRemote({url: "https://chatplatform-base.vercel.app"}) })
 .mount("#app");
