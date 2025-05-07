@@ -46,14 +46,17 @@
           <graffiti-discover
             :channels="['designftw']"
             :schema="createSchema"
-            v-slot="{ objects }"
+            v-slot="{ objects: groups }"
           >
             <ul>
-              <li v-for="g in sortedGroups" :key="g.url">
-                <button @click="enterGroup(g)">
-                  {{ g.value.object.name }}
-                </button>
-              </li>
+              <li
+              v-for="g in groups.sort((a, b) => b.value.published - a.value.published)"
+              :key="g.url"
+            >
+              <button @click="enterGroup(g)">
+                {{ g.value.object.name }}
+              </button>
+            </li>
             </ul>
           </graffiti-discover>
 
@@ -68,10 +71,25 @@
             </form>
           </header>
 
-          <form @submit.prevent="sendMessage($graffitiSession.value)">
+          <form @submit.prevent="sendMessage">
             <input v-model="myMessage" placeholder="Message" />
-            <button type="submit">Send</button>
+          
+            <!-- Text send -->
+            <button type="submit" :disabled="isRecording">Send</button>
+          
+            <!-- Recording controls -->
+            <button
+              type="button"
+              v-if="!isRecording"
+              @click="startRecording"
+            >🎤 Record</button>
+            <button
+              type="button"
+              v-else
+              @click="stopRecording"
+            >■ Stop & Send</button>
           </form>
+          
 
           <graffiti-discover
             v-slot="{ objects: msgs }"
@@ -79,7 +97,7 @@
             :schema="msgSchema"
           >
             <ul class="message-list">
-              <li v-for="m in msgs.sort((a, b) => b.value.published - a.value.published)" :key="m.url">
+              <li v-for="m in msgs.sort((a,b)=>b.value.published - a.value.published)" :key="m.url">
                 <template v-if="editingMessage === m">
                   <input
                     class="message-content"
@@ -93,14 +111,14 @@
                 </template>
                 <template v-else>
                   <div class="message-content">
-  <div class="message-header">
-    <username-display :actor="m.actor" />
-    <small>· {{ new Date(m.value.published).toLocaleTimeString() }}</small>
-  </div>
-  <div class="message-body">
-    <span>{{ m.value.content }}</span>
-  </div>
-</div>
+                    <div class="message-header">
+                      <username-display :actor="m.actor" />
+                      <small>· {{ new Date(m.value.published).toLocaleTimeString() }}</small>
+                    </div>
+                    <div class="message-body">
+                      <span>{{ m.value.content }}</span>
+                    </div>
+                  </div>
                   <div class="message-actions" v-if="m.actor === $graffitiSession.value.actor">
                     <button @click="editingMessage = m; editedContent = m.value.content">Edit</button>
                     <button @click="deleteMessage(m, $graffitiSession.value)">Delete</button>
@@ -116,7 +134,7 @@
         <input v-model="profile.name" placeholder="Name" />
         <input v-model="profile.pronouns" placeholder="Pronouns" />
         <input v-model="profile.describes" placeholder="Describes (link)" />
-        <button @click="saveProfile">Save Profile</button>
+        <button type="button" @click="saveProfile()">Save Profile</button>
 
         <div>
           <h3>Current Profile</h3>

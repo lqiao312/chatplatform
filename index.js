@@ -69,13 +69,13 @@ createApp({
       return {
         properties: {
           value: {
-            required: ["activity", "object", "published"],
+            required: ["content", "published"],
             properties: {
-              content: { type: "string" },
-              published: { type: "number" },
-            },
-          },
-        },
+              content:   { type: "string" },
+              published: { type: "number" }
+            }
+          }
+        }
       };
     },
 
@@ -97,13 +97,13 @@ createApp({
     },
 
     sortedGroups() {
-      return this.$graffiti.state
+      const all = this.$graffiti.state || [];
+      return all
         .filter(o =>
           o.channels?.includes("designftw") &&
-          o.value?.activity === "Create" &&
-          o.value?.object?.type === "Group Chat"
+          o.value.activity === "Create" &&
+          o.value.object?.type === "Group Chat"
         )
-        .slice()
         .sort((a, b) => b.value.published - a.value.published);
     },
   },
@@ -181,13 +181,21 @@ createApp({
       this.channels = ["designftw"];
     },
 
-    async sendMessage(session) {
+    async sendMessage() {
       const text = this.myMessage.trim();
       if (!text) return;
+
+      const session = this.$graffitiSession?.value;
+      if (!session) return;
+  
       await this.$graffiti.put(
-        { value: { content: text, published: Date.now() }, channels: this.channels },
-        session
+        {
+          value: { content: text, published: Date.now() },
+          channels: this.channels
+        },
+         session
       );
+  
       this.myMessage = "";
     },
 
@@ -207,22 +215,6 @@ createApp({
       this.editedContent = "";
     },
 
-    async saveProfile() {
-      const session = this.$graffitiSession?.value;
-      if (!session) return;
-
-      const profile = {
-        name: this.profile.name,
-        pronouns: this.profile.pronouns,
-        describes: this.profile.describes || session.actor,
-        published: Date.now(),
-      };
-
-      await this.$graffiti.put({ value: profile, channels: [session.actor] }, session);
-      await this.loadProfile();
-      this.showProfileEditor = false;
-    },
-
     scrollToProfile() {
       const section = document.getElementById("profile-editor");
       if (section) {
@@ -237,10 +229,35 @@ createApp({
       });
     },
 
+    async saveProfile() {
+      const session = this.$graffitiSession?.value;
+      if (!session) return;
+  
+      const profileData = {
+        name:      this.profile.name,
+        pronouns:  this.profile.pronouns,
+        describes: this.profile.describes || session.actor,
+        published: Date.now(),
+      };
+  
+      await this.$graffiti.put(
+        { value: profileData, channels: [session.actor] },
+        session
+      );
+  
+      await this.loadProfile();
+  
+      this.profile.name     = "";
+      this.profile.pronouns = "";
+      this.profile.describes= "";
+  
+      this.showProfileEditor = false;
+    },
+  
     async loadProfile() {
       const session = this.$graffitiSession?.value;
       if (!session) return;
-    
+  
       const req = {
         channels: [ session.actor ],
         schema: {
@@ -257,9 +274,10 @@ createApp({
           },
         },
       };
-    
+  
+      // <-- Pass the session here so Graffiti can find session.actor
       const profiles = await this.$graffiti.discover(req, session);
-    
+  
       const latest = profiles
         .sort((a, b) => b.value.published - a.value.published)[0];
       if (latest) {
