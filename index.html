@@ -11,23 +11,22 @@
       "vue": "https://cdn.jsdelivr.net/npm/vue@3.5.13/dist/vue.esm-browser.js",
       "@graffiti-garden/implementation-remote": "https://cdn.jsdelivr.net/npm/@graffiti-garden/implementation-remote@0.6.2/dist/browser/index.js",
       "@graffiti-garden/wrapper-vue": "https://cdn.jsdelivr.net/npm/@graffiti-garden/wrapper-vue@0.7.2/dist/browser/plugin.mjs",
-      "@graffiti-garden/modal": "https://cdn.jsdelivr.net/npm/@graffiti-garden/modal@0.4.1/dist/browser/index.js",
       "@inrupt/solid-client-authn-browser": "https://cdn.jsdelivr.net/npm/@inrupt/solid-client-authn-browser@2.1.3/dist/solid-client-authn-browser.esm.js"
     }
   }
   </script>
 
   <link rel="stylesheet" href="style.css" />
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@graffiti-garden/modal@0.4.1/dist/browser/modal.css" />
 </head>
 <body>
   <div id="app">
     <h1>DesignFTW</h1>
 
-    <button v-if="!$graffitiSession.value" @click="startLogin()"> Log In </button>
- 
+    <button v-if="!$graffitiSession.value" @click="startLogin()">Log In</button>
     <button v-else @click="$graffiti.logout($graffitiSession.value)">Log Out</button>
-    <p v-if="$graffitiSession.value">Logged in as <username-display :actor="$graffitiSession.value.actor" /></p>
+    <p v-if="$graffitiSession.value">
+      Logged in as <username-display :actor="$graffitiSession.value.actor" />
+    </p>
 
     <div v-if="$graffitiSession.value">
       <div class="top-right">
@@ -35,12 +34,18 @@
       </div>
 
       <div class="chat-container">
+        <transition name="slide" appear>
         <aside class="chat-sidebar">
           <h2>Create Group</h2>
-          <form @submit.prevent="createGroupChat($graffitiSession.value)">
-            <input v-model="newGroupName" placeholder="Group name" />
-            <button type="submit">Create</button>
-          </form>
+            <form @submit.prevent="createGroupChat($graffitiSession.value)">
+              <input 
+                v-model="newGroupName" 
+                placeholder="Group name" 
+                required
+                @keyup.enter="createGroupChat($graffitiSession.value)"
+              />
+              <button type="submit">Create</button>
+            </form>
 
           <h2>Groups</h2>
           <graffiti-discover
@@ -50,98 +55,199 @@
           >
             <ul>
               <li
-              v-for="g in groups.sort((a, b) => b.value.published - a.value.published)"
-              :key="g.url"
-            >
-              <button @click="enterGroup(g)">
-                {{ g.value.object.name }}
-              </button>
-            </li>
+                v-for="g in groups.sort((a,b)=>b.value.published - a.value.published)"
+                :key="g.url"
+              >
+                <button @click="enterGroup(g)">{{ g.value.object.name }}</button>
+              </li>
             </ul>
           </graffiti-discover>
-
         </aside>
+        </transition>
 
         <main class="chat-main" v-if="currentGroup">
           <header class="group-header">
             <h2>{{ groupName }}</h2>
+  
+            <div v-if="groupOperations.error" class="error">
+              {{ groupOperations.error }}
+            </div>
+            
             <form @submit.prevent="setGroupNameOverride($graffitiSession.value)">
-                <input v-model="editGroupName" placeholder="Rename…" />
-                <button type="submit">Save</button>
+              <input 
+                v-model="editGroupName" 
+                placeholder="Rename..." 
+                :disabled="groupOperations.loading"
+              />
+              <button 
+                type="submit" 
+                :disabled="groupOperations.loading || !editGroupName.trim()"
+              >
+                {{ groupOperations.loading ? 'Saving...' : 'Save' }}
+              </button>
             </form>
           </header>
 
           <form @submit.prevent="sendMessage">
             <input v-model="myMessage" placeholder="Message" />
-          
-            <!-- Text send -->
             <button type="submit" :disabled="isRecording">Send</button>
-          
-            <!-- Recording controls -->
-            <button
-              type="button"
-              v-if="!isRecording"
-              @click="startRecording"
-            >🎤 Record</button>
-            <button
-              type="button"
-              v-else
-              @click="stopRecording"
-            >■ Stop & Send</button>
+            <button type="button" v-if="!isRecording" @click="startRecording">🎤 Record</button>
+            <button type="button" v-else @click="stopRecording">■ Stop & Send</button>
           </form>
-          
 
           <graffiti-discover
             v-slot="{ objects: msgs }"
             :channels="channels"
             :schema="msgSchema"
           >
-            <ul class="message-list">
-              <li v-for="m in msgs.sort((a,b)=>b.value.published - a.value.published)" :key="m.url">
-                <template v-if="editingMessage === m">
-                  <input
-                    class="message-content"
-                    v-model="editedContent"
-                    @keyup.enter="editMessage(m, editedContent, $graffitiSession.value)"
-                  />
-                  <div class="message-actions">
-                    <button @click="editMessage(m, editedContent, $graffitiSession.value)">Save</button>
-                    <button @click="editingMessage = null">Cancel</button>
+            <transition-group name="fade" tag="ul" class="message-list">
+              <li
+                v-for="m in msgs.sort((a, b) => b.value.published - a.value.published)"
+                :key="m.url"
+                class="message-item"
+              >
+                <div class="message-content">
+                  <div class="message-header">
+                    <username-display :actor="m.actor" />
+                    <small>· {{ new Date(m.value.published).toLocaleTimeString() }}</small>
                   </div>
-                </template>
-                <template v-else>
-                  <div class="message-content">
-                    <div class="message-header">
-                      <username-display :actor="m.actor" />
-                      <small>· {{ new Date(m.value.published).toLocaleTimeString() }}</small>
-                    </div>
-                    <div class="message-body">
+
+                  <div class="message-body">
+                    <!-- AUDIO MESSAGE -->
+                    <template v-if="m.value.audio">
+                      <div class="audio-message-wrapper">
+                        <audio
+                          @error="handleAudioError(m)"
+                          :src="m.value.audio"
+                          controls
+                          class="message-audio"
+                        ></audio>
+                        <button
+                          class="expand-btn"
+                          @click="openAudioPopup(m.value.audio)"
+                          aria-label="Expand audio player"
+                        >
+                          <svg
+                            class="icon-expand"
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              d="M5 15l7-7 7 7"
+                              fill="none"
+                              stroke="currentColor"
+                              stroke-width="2"
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                            />
+                          </svg>
+                        </button>
+                      </div>
+                    </template>
+
+                    <!-- TEXT MESSAGE -->
+                    <template v-else>
                       <span>{{ m.value.content }}</span>
-                    </div>
+                    </template>
+
+                    <!-- TRANSCRIPT (if available) -->
+                    <p v-if="transcripts[m.url]" class="message-transcript">
+                      {{ transcripts[m.url] }}
+                    </p>
                   </div>
-                  <div class="message-actions" v-if="m.actor === $graffitiSession.value.actor">
-                    <button @click="editingMessage = m; editedContent = m.value.content">Edit</button>
-                    <button @click="deleteMessage(m, $graffitiSession.value)">Delete</button>
+                </div>
+
+                <div class="more-container">
+                  <button class="more-btn" type="button" @click.stop="toggleMenu(m)">⋮</button>
+                  <div v-if="openMenuFor === m" class="more-menu" @click.stop>
+                    <button v-if="m.value.audio" @click="downloadMessage(m)">Download</button>
+                    <button
+                      v-if="m.actor === $graffitiSession.value.actor && m.value.content"
+                      @click="() => { editingMessage = m; editedContent = m.value.content; openMenuFor = null; }"
+                    >Edit</button>
+                    <button
+                      v-if="m.actor === $graffitiSession.value.actor"
+                      @click="() => { deleteMessage(m, $graffitiSession.value); openMenuFor = null; }"
+                    >Delete</button>
+                    <button
+                      v-if="m.value.audio"
+                      type="button"
+                      @click="transcriptMessage(m)"
+                    >Transcript</button>
                   </div>
-                </template>
+                </div>
               </li>
-            </ul>
+            </transition-group>
           </graffiti-discover>
+
         </main>
       </div>
+
+      <transition 
+        name="slide-down"
+        @enter="handleTransitionEnter"
+        @leave="handleTransitionLeave"
+      >
       <div id="profile-editor" class="profile-editor" v-if="showProfileEditor">
         <h2>Edit Profile</h2>
-        <input v-model="profile.name" placeholder="Name" />
-        <input v-model="profile.pronouns" placeholder="Pronouns" />
-        <input v-model="profile.describes" placeholder="Describes (link)" />
-        <button type="button" @click="saveProfile()">Save Profile</button>
-
-        <div>
+        
+        <!-- Add this error display at the top of the profile editor -->
+        <div v-if="profile.error" class="error">
+          {{ profile.error }}
+        </div>
+        
+        <form @submit.prevent="saveProfile">
+          <input v-model="profile.name" placeholder="Name (required)" required />
+          <input v-model="profile.pronouns" placeholder="Pronouns" />
+          
+          <div class="form-actions">
+            <button type="submit" :disabled="profile.loading">
+              {{ profile.loading ? 'Saving...' : 'Save Profile' }}
+            </button>
+            <button type="button" @click="showProfileEditor = false">
+              Cancel
+            </button>
+          </div>
+        </form>
+        
+        <div v-if="profile.name" class="current-profile">
           <h3>Current Profile</h3>
           <p><strong>Name:</strong> {{ profile.name }}</p>
-          <p><strong>Pronouns:</strong> {{ profile.pronouns }}</p>
-          <p><strong>Describes:</strong> {{ profile.describes }}</p>
+          <p v-if="profile.pronouns"><strong>Pronouns:</strong> {{ profile.pronouns }}</p>
         </div>
+      </div>
+      </transition>
+
+      <transition name="modal">
+      <div
+        v-if="showAudioPopup"
+        class="audio-modal-overlay"
+        @click.self="closeAudioPopup"
+      >
+      <div class="audio-modal">
+        <button class="audio-modal-close" @click="closeAudioPopup">×</button>
+        <div class="enlarged-audio">
+          <div class="audio-controls-row">
+            <audio
+              ref="popupAudio"
+              :src="popupAudioUrl"
+              controls
+              @loadedmetadata="onLoaded"
+            ></audio>
+            <select 
+              v-model.number="playbackRate" 
+              @change="changeSpeed"
+              class="speed-select"
+            >
+              <option v-for="s in [0.5,1,1.5,2]" :key="s" :value="s">
+                {{ s }}×
+              </option>
+            </select>
+          </div>
+        </div>
+      </div>
+      </div>
+      </transition>
       </div>
     </div>
   </div>
