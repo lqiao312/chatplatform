@@ -6,14 +6,14 @@
   <title>DesignFTW • Remote Chat</title>
 
   <script type="importmap">
-  {
-    "imports": {
-      "vue": "https://cdn.jsdelivr.net/npm/vue@3.5.13/dist/vue.esm-browser.js",
-      "@graffiti-garden/implementation-remote": "https://cdn.jsdelivr.net/npm/@graffiti-garden/implementation-remote@0.6.2/dist/browser/index.js",
-      "@graffiti-garden/wrapper-vue": "https://cdn.jsdelivr.net/npm/@graffiti-garden/wrapper-vue@0.7.2/dist/browser/plugin.mjs",
-      "@inrupt/solid-client-authn-browser": "https://cdn.jsdelivr.net/npm/@inrupt/solid-client-authn-browser@2.1.3/dist/solid-client-authn-browser.esm.js"
+    {
+      "imports": {
+        "vue": "https://cdn.jsdelivr.net/npm/vue@3.5.13/dist/vue.esm-browser.js",
+        "@graffiti-garden/implementation-local": "https://cdn.jsdelivr.net/npm/@graffiti-garden/implementation-local@0.6.2/dist/browser/index.js",
+        "@graffiti-garden/wrapper-vue": "https://cdn.jsdelivr.net/npm/@graffiti-garden/wrapper-vue@0.7.2/dist/browser/plugin.mjs",
+        "@inrupt/solid-client-authn-browser": "https://cdn.jsdelivr.net/npm/@inrupt/solid-client-authn-browser@2.1.3/dist/solid-client-authn-browser.esm.js"
+      }
     }
-  }
   </script>
 
   <link rel="stylesheet" href="style.css" />
@@ -22,22 +22,6 @@
   <div id="app">
     <h1>DesignFTW</h1>
     
-    <script>
-      export default {
-        methods: {
-          login() {
-            this.$graffiti.login({
-              oidcIssuer:  'https://broker.pod.inrupt.com/',
-              clientName:  'DesignFTW Chat',
-              redirectUrl: 'https://lqiao312.github.io/chatplatform/', 
-              clientId:    '904f6ec7-7f73-48e2-b791-13656a02f8d7',
-              usePKCE:     true                        
-            });
-          }
-        }
-      };
-      </script>
-
     <button v-if="!$graffitiSession.value" @click="startLogin()">Log In</button>
     <button v-else @click="$graffiti.logout($graffitiSession.value)">Log Out</button>
     <p v-if="$graffitiSession.value">
@@ -119,7 +103,6 @@
                   </div>
 
                   <div class="message-body">
-                    <!-- AUDIO MESSAGE -->
                     <template v-if="m.value.audio">
                       <div class="audio-message-wrapper">
                         <audio
@@ -151,12 +134,10 @@
                       </div>
                     </template>
 
-                    <!-- TEXT MESSAGE -->
                     <template v-else>
                       <span>{{ m.value.content }}</span>
                     </template>
 
-                    <!-- TRANSCRIPT (if available) -->
                     <p v-if="transcripts[m.url]" class="message-transcript">
                       {{ transcripts[m.url] }}
                     </p>
@@ -194,33 +175,47 @@
         @enter="handleTransitionEnter"
         @leave="handleTransitionLeave"
       >
+      <!-- Profile Editor -->
       <div id="profile-editor" class="profile-editor" v-if="showProfileEditor">
         <h2>Edit Profile</h2>
         
-        <!-- Add this error display at the top of the profile editor -->
         <div v-if="profile.error" class="error">
           {{ profile.error }}
         </div>
         
         <form @submit.prevent="saveProfile">
-          <input v-model="profile.name" placeholder="Name (required)" required />
-          <input v-model="profile.pronouns" placeholder="Pronouns" />
+          <input 
+            v-model="profile.name" 
+            placeholder="Name (required)" 
+            required
+            :disabled="profile.loading"
+          />
+          <input 
+            v-model="profile.pronouns" 
+            placeholder="Pronouns"
+            :disabled="profile.loading"
+          />
+          
+          <!-- Show preview of what will be saved -->
+          <div class="preview-profile" v-if="profile.name">
+            <h3>Preview</h3>
+            <p><strong>Name:</strong> {{ profile.name }}</p>
+            <p v-if="profile.pronouns"><strong>Pronouns:</strong> {{ profile.pronouns }}</p>
+          </div>
           
           <div class="form-actions">
             <button type="submit" :disabled="profile.loading">
               {{ profile.loading ? 'Saving...' : 'Save Profile' }}
             </button>
-            <button type="button" @click="showProfileEditor = false">
+            <button 
+              type="button" 
+              @click="showProfileEditor = false"
+              :disabled="profile.loading"
+            >
               Cancel
             </button>
           </div>
         </form>
-        
-        <div v-if="profile.name" class="current-profile">
-          <h3>Current Profile</h3>
-          <p><strong>Name:</strong> {{ profile.name }}</p>
-          <p v-if="profile.pronouns"><strong>Pronouns:</strong> {{ profile.pronouns }}</p>
-        </div>
       </div>
       </transition>
 
@@ -252,17 +247,7 @@
           </div>
         </div>
       </div>
-      </div>
       </transition>
-      </div>
-    </div>
-
-    <div class="debug-tools" v-if="debug">
-      <button @click="testGroupUpdate" class="debug-button">
-        Test Group Update
-      </button>
-      <div class="debug-console" v-if="debugLogs.length">
-        <div v-for="(log, i) in debugLogs" :key="i">{{ log }}</div>
       </div>
     </div>
   </div>

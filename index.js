@@ -1,5 +1,6 @@
 import { createApp } from "vue";
-import { GraffitiRemote } from "@graffiti-garden/implementation-remote";
+// import { GraffitiRemote } from "@graffiti-garden/implementation-remote";
+import { GraffitiLocal } from "@graffiti-garden/implementation-local";
 import { GraffitiPlugin } from "@graffiti-garden/wrapper-vue";
 
 const UsernameDisplay = {
@@ -22,7 +23,6 @@ const UsernameDisplay = {
 createApp({
   data() {
     return {
-      debug: true,
       groups: [],
       groupOperations: {
         loading: false,
@@ -141,50 +141,9 @@ createApp({
       clientId:    '904f6ec7-7f73-48e2-b791-13656a02f8d7',
       usePKCE:     true
     });
-
   },
 
   methods: {
-    async testGroupUpdate() {
-      console.log("=== DEBUG TEST STARTED ===");
-      
-      try {
-        // 1. Verify session
-        console.log("[1] Checking session...");
-        const session = this.$graffitiSession?.value;
-        if (!session) {
-          console.error("No active session");
-          return;
-        }
-        console.log("Session exists:", session.actor);
-  
-        // 2. Verify groups data
-        console.log("[2] Checking groups...");
-        if (!this.groups || this.groups.length === 0) {
-          console.log("No groups found, refreshing...");
-          await this.refreshGroups();
-        }
-        
-        if (this.groups.length === 0) {
-          console.error("Still no groups after refresh");
-          return;
-        }
-  
-        // 3. Set test values
-        console.log("[3] Setting test values...");
-        this.currentGroup = this.groups[0].value.object.channel;
-        this.editGroupName = "Test " + new Date().toLocaleTimeString();
-        
-        // 4. Execute update
-        console.log("[4] Executing update...");
-        await this.setGroupNameOverride(session);
-        
-        console.log("=== DEBUG TEST COMPLETED ===");
-      } catch (error) {
-        console.error("Debug test failed:", error);
-      }
-    },
-
     startLogin() {
       const redirect = window.location.origin + window.location.pathname;
       this.$graffiti.login({
@@ -195,7 +154,6 @@ createApp({
     },
 
     handleAudioError(message) {
-      console.error("Audio playback failed", message);
       message.value.audioError = true;
     },
 
@@ -205,22 +163,18 @@ createApp({
         return;
       }
       if (!MediaRecorder.isTypeSupported('audio/webm')) {
-        console.warn("WebM audio not supported, falling back to default codec");
+        return;
       }
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        console.log("Got audio stream");
         this.chunks = [];
         this.recorder = new MediaRecorder(stream);
         this.recorder.ondataavailable = e => {
-          console.log("Got audio chunk", e.data.size);
           this.chunks.push(e.data);
         };
         this.recorder.start();
         this.isRecording = true;
-        console.log("Recording started");
       } catch (err) {
-        console.error("Recording failed:", err);
         alert("Couldn't start recording: " + err.message);
       }
     },
@@ -238,11 +192,9 @@ createApp({
     },
 
     async sendAudioMessage(blob) {
-      console.log("Audio blob size:", blob.size); // Check if blob exists
       const reader = new FileReader();
       reader.onload = async () => {
         const dataUrl = reader.result;
-        console.log("Audio data URL:", dataUrl.substring(0, 100) + "..."); // Check data URL
         const session = this.$graffitiSession.value;
         if (!session) return;
       
@@ -253,7 +205,6 @@ createApp({
           },
           session
         );
-        console.log("Audio message sent successfully");
       };
       reader.readAsDataURL(blob);
     },
@@ -275,29 +226,14 @@ createApp({
     async transcriptMessage(m) {
        if (!m.value.audio) return;
        try {
-        console.log("Transcribing message:", m.url);
-        // const res = await fetch('http://localhost:3000/api/transcribe', {
-        //   method: 'POST',
-        //   headers: { 'Content-Type': 'application/json' },
-        //   body: JSON.stringify({ audio: m.value.audio })
-        // });
-        // const res = await fetch('http://localhost:3000/api/transcribe', {
-        //   method: 'POST',
-        //   headers: { 'Content-Type': 'application/json' },
-        //   body: JSON.stringify({ audio: m.value.audio })
-        // });
         const res = await fetch('/api/transcribe', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ audio: m.value.audio })
         });
-        console.log(res.status);
-          console.log("Got response:", res.status);
-          const body = await res.json();
-          console.log("Transcript payload:", body);
-          this.transcripts[m.url] = body.transcript;
-        } catch (err) {
-          console.error('Transcription failed', err);
+        const body = await res.json();
+        this.transcripts[m.url] = body.transcript;
+      } catch (err) {
         alert('Sorry, could not generate transcript.');
       }
     },
@@ -314,9 +250,7 @@ createApp({
           aud.currentTime = 0;
           aud.volume = safeVolume;
           aud.playbackRate = safePlaybackRate;
-          aud.play().catch(error => {
-            console.error('Audio playback failed:', error);
-          });
+          aud.play().catch(() => {});
         }
       });
     },
@@ -340,21 +274,11 @@ createApp({
     },
 
     handleTransitionEnter(el, done) {
-      try {
-        done()
-      } catch (error) {
-        console.error('Enter transition error:', error)
-        done()
-      }
+      done();
     },
 
     handleTransitionLeave(el, done) {
-      try {
-        done()
-      } catch (error) {
-        console.error('Leave transition error:', error)
-        done()
-      }
+      done();
     },
 
     formatTime(seconds) {
@@ -372,7 +296,6 @@ createApp({
           return;
         }
     
-        // Create the group
         const newGroup = {
           value: {
             activity: "Create",
@@ -395,14 +318,12 @@ createApp({
         this.enterGroup(newGroup);
     
       } catch (error) {
-        console.error("Failed to create group:", error);
         alert("Failed to create group. Please try again.");
       }
     },
 
     async refreshGroups() {
       try {
-        console.log("Refreshing groups list...");
         const response = await this.$graffiti.get({
           channels: ["designftw"],
           schema: this.createSchema
@@ -412,10 +333,8 @@ createApp({
           .filter(item => item?.value?.activity === "Create")
           .sort((a, b) => b.value.published - a.value.published);
         
-        console.log("Groups refreshed:", this.groups.length);
-        
       } catch (error) {
-        console.error("Group refresh failed:", error);
+        this.groupOperations.error = "Failed to load groups";
       }
     },
 
@@ -442,7 +361,6 @@ createApp({
           return;
         }
     
-        // Find the specific group in our local state
         const groupIndex = this.groups.findIndex(
           g => g?.value?.object?.channel === this.currentGroup
         );
@@ -452,7 +370,6 @@ createApp({
           return;
         }
     
-        // Create a copy of the group with updated name
         const updatedGroup = {
           ...this.groups[groupIndex],
           value: {
@@ -464,19 +381,15 @@ createApp({
           }
         };
     
-        // Update on server
         await this.$graffiti.put(updatedGroup, session);
     
-        // Update local state
         this.groups[groupIndex] = updatedGroup;
-        this.groupNameOverride = null; // Clear override to use the new name
+        this.groupNameOverride = null;
         this.editGroupName = "";
     
-        // Refresh the groups list
         await this.refreshGroups();
     
       } catch (error) {
-        console.error("Group update failed:", error);
         this.groupOperations.error = "Failed to update group name";
       } finally {
         this.groupOperations.loading = false;
@@ -544,14 +457,17 @@ createApp({
         const session = this.$graffitiSession?.value;
         if (!session) throw new Error("Not authenticated");
     
-        if (!this.profile.name.trim()) {
+        const name = this.profile.name.trim();
+        const pronouns = this.profile.pronouns.trim();
+    
+        if (!name) {
           throw new Error("Name is required");
         }
     
         const profileObj = {
           type: "Profile",
-          name: this.profile.name.trim(),
-          pronouns: this.profile.pronouns.trim(),
+          name: name,
+          pronouns: pronouns,
           published: new Date().toISOString()
         };
     
@@ -560,16 +476,16 @@ createApp({
           channels: [session.actor]
         }, session);
     
+        // Hide editor but keep values
         this.showProfileEditor = false;
         
       } catch (error) {
-        console.error("Profile save error:", error);
         this.profile.error = error.message;
       } finally {
         this.profile.loading = false;
       }
     },
-    
+      
     async loadProfile() {
       try {
         this.profile.loading = true;
@@ -578,7 +494,6 @@ createApp({
         const session = this.$graffitiSession?.value;
         if (!session) return;
     
-        // Use discover instead of get to avoid URL validation
         const results = await this.$graffiti.discover({
           channels: [session.actor],
           schema: {
@@ -602,7 +517,6 @@ createApp({
         }
         
       } catch (error) {
-        console.error("Profile load error:", error);
         // Silent error - don't show to user during initial load
       } finally {
         this.profile.loading = false;
@@ -616,7 +530,6 @@ createApp({
         if (session) {
           this.loadProfile();
         } else {
-          // Reset profile when logged out
           this.profile = {
             name: "",
             pronouns: "",
@@ -631,8 +544,7 @@ createApp({
 })
 .component("username-display", UsernameDisplay)
 .use(GraffitiPlugin, {
-  root:  "https://storage.inrupt.com/7931c83e-d147-4756-82ee-222eb499e1c4/",
-  webId: "https://id.inrupt.com/ljq",
-  graffiti: new GraffitiRemote()
+  graffiti: new GraffitiLocal(),
+  // graffiti: new GraffitiRemote(),
 })
 .mount("#app");
