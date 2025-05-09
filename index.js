@@ -1,6 +1,6 @@
 import { createApp } from "vue";
-import { GraffitiRemote } from "@graffiti-garden/implementation-remote";
-// import { GraffitiLocal } from "@graffiti-garden/implementation-local";
+// import { GraffitiRemote } from "@graffiti-garden/implementation-remote";
+import { GraffitiLocal } from "@graffiti-garden/implementation-local";
 import { GraffitiPlugin } from "@graffiti-garden/wrapper-vue";
 
 const UsernameDisplay = {
@@ -544,7 +544,7 @@ createApp({
 })
 .component("username-display", UsernameDisplay)
 .use(GraffitiPlugin, {
-  // graffiti: new GraffitiLocal(),
-  graffiti: new GraffitiRemote(),
+  graffiti: new GraffitiLocal(),
+  // graffiti: new GraffitiRemote(),
 })
 .mount("#app");
