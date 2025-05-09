@@ -431,12 +431,28 @@ button:hover {
   60%                    { transform: translateY(-3px); }
 }
 
+.status {
+  padding: 0.5rem;
+  border-radius: 4px;
+  margin: 0.5rem 0;
+  font-size: 0.9rem;
+}
+
 .error {
   color: #ef4444;
   padding: 0.5rem;
   background: #fee2e2;
   border-radius: 4px;
-  margin-bottom: 1rem;
+  margin: 0.5rem 0;
+}
+
+.success {
+  color: #10b981;
+  padding: 0.5rem;
+  background: #ecfdf5;
+  border-radius: 4px;
+  margin: 0.5rem 0;
+  font-size: 0.9rem;
 }
 
 .loading {
@@ -549,3 +565,35 @@ button:hover {
   border: 1px solid var(--color-border);
 }
 
+.debug-tools {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  padding: 10px;
+  background: #f0f0f0;
+  border-radius: 5px;
+  z-index: 1000;
+}
+
+.debug-tools button {
+  background: #4CAF50;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.group-header {
+  margin-bottom: 1rem;
+  padding: 1rem;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.save-hint {
+  font-size: 0.8rem;
+  color: #666;
+  margin-left: 0.5rem;
+}

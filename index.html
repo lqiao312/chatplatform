@@ -69,22 +69,12 @@
           <header class="group-header">
             <h2>{{ groupName }}</h2>
   
-            <div v-if="groupOperations.error" class="error">
-              {{ groupOperations.error }}
-            </div>
-            
             <form @submit.prevent="setGroupNameOverride($graffitiSession.value)">
-              <input 
-                v-model="editGroupName" 
-                placeholder="Rename..." 
-                :disabled="groupOperations.loading"
-              />
-              <button 
-                type="submit" 
-                :disabled="groupOperations.loading || !editGroupName.trim()"
-              >
-                {{ groupOperations.loading ? 'Saving...' : 'Save' }}
-              </button>
+              <input v-model="editGroupName" placeholder="Rename..." />
+              <button type="submit">Save</button>
+              <span v-if="editGroupName" class="save-hint">
+                Press Enter or click Save to update
+              </span>
             </form>
           </header>
 
@@ -248,6 +238,15 @@
       </div>
       </div>
       </transition>
+      </div>
+    </div>
+
+    <div class="debug-tools" v-if="debug">
+      <button @click="testGroupUpdate" class="debug-button">
+        Test Group Update
+      </button>
+      <div class="debug-console" v-if="debugLogs.length">
+        <div v-for="(log, i) in debugLogs" :key="i">{{ log }}</div>
       </div>
     </div>
   </div>

@@ -22,10 +22,12 @@ const UsernameDisplay = {
 createApp({
   data() {
     return {
+      debug: true,
       groups: [],
       groupOperations: {
         loading: false,
-        error: null
+        error: null,
+        lastUpdated: null
       },
 
       newGroupName: "",
@@ -131,9 +133,58 @@ createApp({
     if (this.$graffitiSession.value) {
       this.refreshGroups();
     }
+
+    this.$graffiti.login({
+      oidcIssuer:  'https://broker.pod.inrupt.com/',
+      clientName:  'DesignFTW Chat',
+      redirectUrl: window.location.origin + '/',
+      clientId:    '904f6ec7-7f73-48e2-b791-13656a02f8d7',
+      usePKCE:     true
+    });
+    
   },
 
   methods: {
+    async testGroupUpdate() {
+      console.log("=== DEBUG TEST STARTED ===");
+      
+      try {
+        // 1. Verify session
+        console.log("[1] Checking session...");
+        const session = this.$graffitiSession?.value;
+        if (!session) {
+          console.error("No active session");
+          return;
+        }
+        console.log("Session exists:", session.actor);
+  
+        // 2. Verify groups data
+        console.log("[2] Checking groups...");
+        if (!this.groups || this.groups.length === 0) {
+          console.log("No groups found, refreshing...");
+          await this.refreshGroups();
+        }
+        
+        if (this.groups.length === 0) {
+          console.error("Still no groups after refresh");
+          return;
+        }
+  
+        // 3. Set test values
+        console.log("[3] Setting test values...");
+        this.currentGroup = this.groups[0].value.object.channel;
+        this.editGroupName = "Test " + new Date().toLocaleTimeString();
+        
+        // 4. Execute update
+        console.log("[4] Executing update...");
+        await this.setGroupNameOverride(session);
+        
+        console.log("=== DEBUG TEST COMPLETED ===");
+      } catch (error) {
+        console.error("Debug test failed:", error);
+      }
+    },
+
     startLogin() {
       const redirect = window.location.origin + window.location.pathname;
       this.$graffiti.login({
@@ -351,20 +402,20 @@ createApp({
 
     async refreshGroups() {
       try {
-        this.groupOperations.loading = true;
+        console.log("Refreshing groups list...");
         const response = await this.$graffiti.get({
-          channels: ["designftw"]
+          channels: ["designftw"],
+          schema: this.createSchema
         });
         
         this.groups = response
           .filter(item => item?.value?.activity === "Create")
           .sort((a, b) => b.value.published - a.value.published);
         
+        console.log("Groups refreshed:", this.groups.length);
+        
       } catch (error) {
         console.error("Group refresh failed:", error);
-        this.groupOperations.error = "Failed to load groups";
-      } finally {
-        this.groupOperations.loading = false;
       }
     },
 
@@ -374,6 +425,10 @@ createApp({
       this.selectedGroupObject = group;
       this.channels = [groupObj.channel];
       this.editGroupName = groupObj.name;
+    },
+
+    formatDate(date) {
+      return new Date(date).toLocaleString();
     },
 
     async setGroupNameOverride(session) {
@@ -387,7 +442,7 @@ createApp({
           return;
         }
     
-        // Find group in local cache
+        // Find the specific group in our local state
         const groupIndex = this.groups.findIndex(
           g => g?.value?.object?.channel === this.currentGroup
         );
@@ -397,7 +452,7 @@ createApp({
           return;
         }
     
-        // Create updated group object
+        // Create a copy of the group with updated name
         const updatedGroup = {
           ...this.groups[groupIndex],
           value: {
@@ -409,20 +464,20 @@ createApp({
           }
         };
     
-        // Save using only channel-based approach
-        await this.$graffiti.put({
-          value: updatedGroup.value,
-          channels: [this.currentGroup]
-        }, session);
+        // Update on server
+        await this.$graffiti.put(updatedGroup, session);
     
         // Update local state
         this.groups[groupIndex] = updatedGroup;
-        this.groupNameOverride = { name };
+        this.groupNameOverride = null; // Clear override to use the new name
         this.editGroupName = "";
+    
+        // Refresh the groups list
+        await this.refreshGroups();
     
       } catch (error) {
         console.error("Group update failed:", error);
-        this.groupOperations.error = "Update failed. Please try again.";
+        this.groupOperations.error = "Failed to update group name";
       } finally {
         this.groupOperations.loading = false;
       }
