@@ -630,5 +630,9 @@ createApp({
   },
 })
 .component("username-display", UsernameDisplay)
-.use(GraffitiPlugin, { graffiti: new GraffitiRemote({url: "https://chatplatform-base.vercel.app"}) })
+.use(GraffitiPlugin, {
+  root:  "https://storage.inrupt.com/7931c83e-d147-4756-82ee-222eb499e1c4/",
+  webId: "https://id.inrupt.com/ljq",
+  graffiti: new GraffitiRemote()
+})
 .mount("#app");

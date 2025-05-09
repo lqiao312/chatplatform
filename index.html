@@ -21,6 +21,22 @@
 <body>
   <div id="app">
     <h1>DesignFTW</h1>
+    
+    <script>
+      export default {
+        methods: {
+          login() {
+            this.$graffiti.login({
+              oidcIssuer:  'https://broker.pod.inrupt.com/',
+              clientName:  'DesignFTW Chat',
+              redirectUrl: 'https://lqiao312.github.io/chatplatform/', 
+              clientId:    '904f6ec7-7f73-48e2-b791-13656a02f8d7',
+              usePKCE:     true                        
+            });
+          }
+        }
+      };
+      </script>
 
     <button v-if="!$graffitiSession.value" @click="startLogin()">Log In</button>
     <button v-else @click="$graffiti.logout($graffitiSession.value)">Log Out</button>
