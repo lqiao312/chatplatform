@@ -137,11 +137,11 @@ createApp({
     this.$graffiti.login({
       oidcIssuer:  'https://broker.pod.inrupt.com/',
       clientName:  'DesignFTW Chat',
-      redirectUrl: window.location.origin + '/',
+      redirectUrl: 'https://lqiao312.github.io/chatplatform/',
       clientId:    '904f6ec7-7f73-48e2-b791-13656a02f8d7',
       usePKCE:     true
     });
-    
+
   },
 
   methods: {
