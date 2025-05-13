@@ -6,21 +6,20 @@
   <title>DesignFTW • Remote Chat</title>
 
   <script type="importmap">
-    {
-      "imports": {
-        "vue": "https://cdn.jsdelivr.net/npm/vue@3.5.13/dist/vue.esm-browser.js",
-        "@graffiti-garden/implementation-local": "https://cdn.jsdelivr.net/npm/@graffiti-garden/implementation-local@0.6.2/dist/browser/index.js",
-        "@graffiti-garden/wrapper-vue": "https://cdn.jsdelivr.net/npm/@graffiti-garden/wrapper-vue@0.7.2/dist/browser/plugin.mjs",
-        "@inrupt/solid-client-authn-browser": "https://cdn.jsdelivr.net/npm/@inrupt/solid-client-authn-browser@2.1.3/dist/solid-client-authn-browser.esm.js"
-      }
+  {
+    "imports": {
+      "vue": "https://cdn.jsdelivr.net/npm/vue@3.5.13/dist/vue.esm-browser.js",
+      "@graffiti-garden/implementation-local": "https://cdn.jsdelivr.net/npm/@graffiti-garden/implementation-local@0.6.4/dist/browser/index.js",
+      "@graffiti-garden/wrapper-vue": "https://cdn.jsdelivr.net/npm/@graffiti-garden/wrapper-vue@0.7.2/dist/browser/plugin.mjs"
     }
+  }
   </script>
 
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <div id="app">
-    <h1>DesignFTW</h1>
+    <h1>ChatRoom</h1>
     
     <button v-if="!$graffitiSession.value" @click="startLogin()">Log In</button>
     <button v-else @click="$graffiti.logout($graffitiSession.value)">Log Out</button>
@@ -53,14 +52,30 @@
             :schema="createSchema"
             v-slot="{ objects: groups }"
           >
-            <ul>
-              <li
-                v-for="g in groups.sort((a,b)=>b.value.published - a.value.published)"
-                :key="g.url"
-              >
-                <button @click="enterGroup(g)">{{ g.value.object.name }}</button>
-              </li>
-            </ul>
+          <ul>
+            <li
+              v-for="g in groups.sort((a,b)=>b.value.published - a.value.published)"
+              :key="g.url"
+              class="group-item"
+            >
+              <div class="group-content">
+                <button 
+                  @click="enterGroup(g)"
+                  class="group-name-btn"
+                  :title="g.value.object.name"
+                >
+                  {{ truncateGroupName(g.value.object.name) }}
+                </button>
+                <button 
+                  class="delete-group-btn"
+                  @click.stop="confirmDeleteGroup(g)"
+                  aria-label="Delete group"
+                >
+                  ×
+                </button>
+              </div>
+            </li>
+          </ul>
           </graffiti-discover>
         </aside>
         </transition>
@@ -68,10 +83,12 @@
         <main class="chat-main" v-if="currentGroup">
           <header class="group-header">
             <h2>{{ groupName }}</h2>
-  
+            
             <form @submit.prevent="setGroupNameOverride($graffitiSession.value)">
               <input v-model="editGroupName" placeholder="Rename..." />
-              <button type="submit">Save</button>
+              <button type="submit" :disabled="groupOperations.loading">
+                {{ groupOperations.loading ? 'Saving...' : 'Save' }}
+              </button>
               <span v-if="editGroupName" class="save-hint">
                 Press Enter or click Save to update
               </span>
@@ -92,78 +109,79 @@
           >
             <transition-group name="fade" tag="ul" class="message-list">
               <li
-                v-for="m in msgs.sort((a, b) => b.value.published - a.value.published)"
-                :key="m.url"
-                class="message-item"
-              >
-                <div class="message-content">
-                  <div class="message-header">
-                    <username-display :actor="m.actor" />
-                    <small>· {{ new Date(m.value.published).toLocaleTimeString() }}</small>
-                  </div>
-
-                  <div class="message-body">
-                    <template v-if="m.value.audio">
-                      <div class="audio-message-wrapper">
-                        <audio
-                          @error="handleAudioError(m)"
-                          :src="m.value.audio"
-                          controls
-                          class="message-audio"
-                        ></audio>
-                        <button
-                          class="expand-btn"
-                          @click="openAudioPopup(m.value.audio)"
-                          aria-label="Expand audio player"
-                        >
-                          <svg
-                            class="icon-expand"
-                            xmlns="http://www.w3.org/2000/svg"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              d="M5 15l7-7 7 7"
-                              fill="none"
-                              stroke="currentColor"
-                              stroke-width="2"
-                              stroke-linecap="round"
-                              stroke-linejoin="round"
-                            />
-                          </svg>
-                        </button>
-                      </div>
-                    </template>
-
-                    <template v-else>
-                      <span>{{ m.value.content }}</span>
-                    </template>
-
-                    <p v-if="transcripts[m.url]" class="message-transcript">
-                      {{ transcripts[m.url] }}
-                    </p>
-                  </div>
+              v-for="m in msgs.sort((a, b) => b.value.published - a.value.published)"
+              :key="m.url"
+              class="message-item"
+              :class="{'has-audio': m.value.audio}"
+            >
+              <div class="message-content">
+                <div class="message-header">
+                  <username-display :actor="m.actor" />
                 </div>
-
-                <div class="more-container">
-                  <button class="more-btn" type="button" @click.stop="toggleMenu(m)">⋮</button>
-                  <div v-if="openMenuFor === m" class="more-menu" @click.stop>
-                    <button v-if="m.value.audio" @click="downloadMessage(m)">Download</button>
-                    <button
-                      v-if="m.actor === $graffitiSession.value.actor && m.value.content"
-                      @click="() => { editingMessage = m; editedContent = m.value.content; openMenuFor = null; }"
-                    >Edit</button>
-                    <button
-                      v-if="m.actor === $graffitiSession.value.actor"
-                      @click="() => { deleteMessage(m, $graffitiSession.value); openMenuFor = null; }"
-                    >Delete</button>
-                    <button
-                      v-if="m.value.audio"
-                      type="button"
-                      @click="transcriptMessage(m)"
-                    >Transcript</button>
+            
+                <div class="message-body">
+                  <template v-if="m.value.audio">
+                    <div class="audio-message-wrapper">
+                      <audio
+                        @error="handleAudioError(m)"
+                        :src="m.value.audio"
+                        controls
+                        class="message-audio"
+                      ></audio>
+                      <button
+                        class="expand-btn"
+                        @click.stop="openAudioPopup(m.value.audio)"
+                        aria-label="Expand audio player"
+                      >
+                        <svg class="icon-expand" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                          <path d="M5 15l7-7 7 7" fill="none" stroke="currentColor" stroke-width="2"/>
+                        </svg>
+                      </button>
+                    </div>
+                  </template>
+            
+                  <template v-else>
+                    <div class="message-text-container">
+                      <span 
+                        class="message-text"
+                        :class="{truncated: shouldTruncate(m.value.content) && !isExpanded(m)}"
+                        @click="toggleMessageExpand(m)"
+                      >
+                        {{ m.value.content }}
+                      </span>
+                    </div>
+                  </template>
+            
+                  <div class="message-timestamp">
+                    {{ new Date(m.value.published).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}
                   </div>
+            
+                  <p v-if="transcripts[m.url]" class="message-transcript">
+                    {{ transcripts[m.url] }}
+                  </p>
                 </div>
-              </li>
+              </div>
+            
+              <div class="more-container">
+                <button class="more-btn" type="button" @click.stop="toggleMenu(m)">⋮</button>
+                <div v-if="openMenuFor === m" class="more-menu" @click.stop>
+                  <button v-if="m.value.audio" @click="downloadMessage(m)">Download</button>
+                  <button
+                    v-if="m.actor === $graffitiSession.value.actor && m.value.content"
+                    @click="() => { editingMessage = m; editedContent = m.value.content; openMenuFor = null; }"
+                  >Edit</button>
+                  <button
+                    v-if="m.actor === $graffitiSession.value.actor"
+                    @click="() => { deleteMessage(m, $graffitiSession.value); openMenuFor = null; }"
+                  >Delete</button>
+                  <button
+                    v-if="m.value.audio"
+                    type="button"
+                    @click="transcriptMessage(m)"
+                  >Transcript</button>
+                </div>
+              </div>
+            </li>
             </transition-group>
           </graffiti-discover>
 
@@ -185,18 +203,17 @@
         
         <form @submit.prevent="saveProfile">
           <input 
-            v-model="profile.name" 
+            v-model.trim="profile.name" 
             placeholder="Name (required)" 
             required
             :disabled="profile.loading"
           />
           <input 
-            v-model="profile.pronouns" 
+            v-model.trim="profile.pronouns" 
             placeholder="Pronouns"
             :disabled="profile.loading"
           />
           
-          <!-- Show preview of what will be saved -->
           <div class="preview-profile" v-if="profile.name">
             <h3>Preview</h3>
             <p><strong>Name:</strong> {{ profile.name }}</p>
@@ -216,37 +233,47 @@
             </button>
           </div>
         </form>
+
+        <div class="saved-profile" v-if="hasSavedProfile">
+          <h3>Your Saved Profile</h3>
+          <p><strong>Name:</strong> {{ savedProfile.name }}</p>
+          <p v-if="savedProfile.pronouns"><strong>Pronouns:</strong> {{ savedProfile.pronouns }}</p>
+          <small>Last updated: {{ formatProfileDate(savedProfile.published) }}</small>
+        </div>
       </div>
       </transition>
 
       <transition name="modal">
-      <div
-        v-if="showAudioPopup"
-        class="audio-modal-overlay"
-        @click.self="closeAudioPopup"
-      >
-      <div class="audio-modal">
-        <button class="audio-modal-close" @click="closeAudioPopup">×</button>
-        <div class="enlarged-audio">
-          <div class="audio-controls-row">
-            <audio
-              ref="popupAudio"
-              :src="popupAudioUrl"
-              controls
-              @loadedmetadata="onLoaded"
-            ></audio>
-            <select 
-              v-model.number="playbackRate" 
-              @change="changeSpeed"
-              class="speed-select"
-            >
-              <option v-for="s in [0.5,1,1.5,2]" :key="s" :value="s">
-                {{ s }}×
-              </option>
-            </select>
+        <div 
+          v-if="showAudioPopup" 
+          class="audio-modal-overlay"
+          @click.self="closeAudioPopup"
+        >
+          <div class="audio-modal">
+            <button class="audio-modal-close" @click="closeAudioPopup" aria-label="Close audio player">
+              <svg class="close-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path d="M18 6L6 18M6 6l12 12" />
+              </svg>
+            </button>
+            <div class="enlarged-audio">
+              <audio
+                ref="popupAudio"
+                :src="popupAudioUrl"
+                controls
+                @loadedmetadata="onLoaded"
+              ></audio>
+              <select 
+                v-model.number="playbackRate" 
+                @change="changeSpeed"
+                class="speed-select"
+              >
+                <option v-for="s in [0.5,1,1.5,2]" :key="s" :value="s">
+                  {{ s }}×
+                </option>
+              </select>
+            </div>
           </div>
         </div>
-      </div>
       </transition>
       </div>
     </div>
