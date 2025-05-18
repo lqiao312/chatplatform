@@ -157,11 +157,6 @@ const app = createApp({
       }
     },
 
-    groupName() {
-      if (this.groupNameOverride) return this.groupNameOverride.name;
-      return this.selectedGroupObject?.value?.object?.name ?? "Unnamed Group";
-    },
-
     sortedGroups() {
       const all = this.$graffiti.state || [];
       return all
@@ -175,35 +170,30 @@ const app = createApp({
   },
 
   async mounted() {
-    this.loadFromLocalStorage();
-    
-    this.speechSupported = 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window;
-    
-    if (this.speechSupported) {
-      this.initSpeechRecognition();
+
+    if (!localStorage.getItem('graffiti-local-state')) {
+      this.$graffiti.state = [];
+      localStorage.setItem('graffiti-local-state', JSON.stringify([]));
     }
 
+    this.loadFromLocalStorage();
+
     if (this.$graffitiSession.value) {
+      await this.refreshGroups();
       await this.loadProfile();
     }
-    
-    this.$watch(
-      () => JSON.stringify(this.$graffiti.state),
-      (newVal) => {
-        localStorage.setItem('graffitiLocalData', newVal);
-      },
-      { deep: true }
-    );
-  },
+
+    this.initSpeechRecognition();
+  }, 
 
   methods: {
     async login() {
       try {
         const username = prompt("Enter your username:");
         if (!username) return;
-        
-        this.$graffitiSession.value = null;
-        
+
+        this.loadFromLocalStorage();
+
         await this.$graffiti.login({
           actor: `user:${username}`,
           name: username,
@@ -211,18 +201,22 @@ const app = createApp({
         });
 
         await this.refreshGroups();
+
         await this.loadProfile();
-        
+
         this.$forceUpdate();
-        
+
       } catch (err) {
-        console.error('Login failed', err);
+        console.error('Login failed:', err);
         this.$graffitiSession.value = null;
+        this.groups = [];
       }
     },
 
     async logout() {
       try {
+        const session = this.$graffitiSession.value;
+
         this.currentGroup = null;
         this.channels = ["designftw"];
         this.myMessage = "";
@@ -232,19 +226,19 @@ const app = createApp({
         this.hasSavedProfile = false;
         this.profile = { name: "", pronouns: "", loaded: false, error: null };
         
-        localStorage.clear();
+        localStorage.removeItem('graffiti-local-session')
         
-        if (this.$graffiti && typeof this.$graffiti.logout === 'function') {
+        if (session && this.$graffiti && typeof this.$graffiti.logout === 'function') {
           try {
-            await this.$graffiti.logout();
+            await this.$graffiti.logout(session);
           } catch (logoutError) {
             console.warn('Graffiti logout failed:', logoutError);
           }
         }
         
         this.$graffitiSession.value = null;
-        
-        window.location.reload();
+
+        localStorage.removeItem('graffiti-local-session');
         
       } catch (err) {
         console.error('Logout failed:', err);
@@ -253,23 +247,28 @@ const app = createApp({
     },
 
     saveToLocalStorage() {
-      if (this.useLocalStorage) {
-        localStorage.setItem('graffitiLocalData', JSON.stringify(this.$graffiti.state));
-        localStorage.setItem('graffiti-local-state', JSON.stringify(this.$graffiti.state));
+      try {
+        if (!this.$graffiti.state) {
+          this.$graffiti.state = [];
+        }
+        const state = JSON.stringify(this.$graffiti.state);
+        localStorage.setItem('graffiti-local-state', state);
+      } catch (e) {
+        console.error("Failed to save to localStorage:", e);
       }
     },
 
     loadFromLocalStorage() {
-      if (this.useLocalStorage) {
-        const data = localStorage.getItem('graffiti-local-state') || 
-                    localStorage.getItem('graffitiLocalData');
+      try {
+        const data = localStorage.getItem('graffiti-local-state');
         if (data) {
-          try {
-            this.$graffiti.state = JSON.parse(data);
-          } catch (e) {
-            console.error("Failed to load localStorage data:", e);
+          const parsed = JSON.parse(data);
+          if (Array.isArray(parsed)) {
+            this.$graffiti.state = [...parsed];
           }
         }
+      } catch (e) {
+        console.error("Failed to load localStorage data:", e);
       }
     },
 
@@ -296,12 +295,6 @@ const app = createApp({
     truncateGroupName(name) {
       const maxLength = 15;
       return name.length > maxLength ? `${name.substring(0, maxLength)}...` : name;
-    },
-
-    handleAudioError(message) {
-      if (message && message.value) {
-        message.value.audioError = true;
-      }
     },
 
     async startRecording() {
@@ -490,7 +483,11 @@ const app = createApp({
           alert("Please enter a group name");
           return;
         }
-    
+
+        if (!Array.isArray(this.$graffiti.state)) {
+          this.$graffiti.state = [];
+        }
+
         const newGroup = {
           value: {
             activity: "Create",
@@ -503,42 +500,48 @@ const app = createApp({
           },
           channels: ["designftw"],
         };
-    
+
         await this.$graffiti.put(newGroup, session);
-    
         this.newGroupName = "";
-    
+        
         await this.refreshGroups();
-    
+        this.saveToLocalStorage();
         this.enterGroup(newGroup);
     
       } catch (error) {
         alert("Failed to create group. Please try again.");
+        console.error("Create group error:", error);
       }
     },
 
     async refreshGroups() {
       try {
-        const response = await this.$graffiti.get({
-          channels: ["designftw"],
-          schema: this.createSchema
-        });
+        let groups = [];
         
-        if (!response || response.length === 0) {
-          const localData = localStorage.getItem('graffiti-local-state');
-          if (localData) {
-            this.$graffiti.state = JSON.parse(localData);
-            return;
+        try {
+          const response = await this.$graffiti.get({
+            channels: ["designftw"],
+            schema: this.createSchema
+          });
+          groups = Array.isArray(response) ? response : [];
+        } catch (error) {
+          if (error.name === 'GraffitiErrorNotFound') {
+            console.log("No groups found, starting with empty list");
+            groups = [];
+          } else {
+            console.warn("Groups load failed:", error);
+            groups = [];
           }
         }
-        
-        this.groups = response
+
+        this.groups = groups
           .filter(item => item?.value?.activity === "Create")
           .sort((a, b) => b.value.published - a.value.published);
-        
+
       } catch (error) {
-        console.error("Error loading groups:", error);
+        console.error("Error processing groups:", error);
         this.groupOperations.error = "Failed to load groups";
+        this.groups = []; 
       }
     },
 
@@ -591,6 +594,8 @@ const app = createApp({
           await this.$graffiti.put(updatedGroup, session);
           
           this.saveToLocalStorage();
+
+          this.selectedGroupObject = updatedGroup;
         }
 
         this.editGroupName = "";
@@ -703,14 +708,15 @@ const app = createApp({
           channels: [session.actor]
         }, session);
 
-        await this.$graffiti.save();
-
         this.savedProfile = {
           name: name,
           pronouns: pronouns,
           published: profileObj.published
         };
+
         this.hasSavedProfile = true;
+
+        localStorage.setItem('user-profile', JSON.stringify(this.savedProfile));
 
         this.showProfileEditor = false;
         
@@ -725,7 +731,17 @@ const app = createApp({
       try {
         const session = this.$graffitiSession?.value;
         if (!session) return;
-  
+
+        const localStorageKey = `user-profile-${session.actor}`;
+        const localStorageProfile = localStorage.getItem(localStorageKey);
+        if (localStorageProfile) {
+          const parsed = JSON.parse(localStorageProfile);
+          this.savedProfile = parsed;
+          this.hasSavedProfile = true;
+          this.profile.name = parsed.name;
+          this.profile.pronouns = parsed.pronouns;
+        }
+
         const results = await this.$graffiti.discover({
           channels: [session.actor],
           schema: {
@@ -738,7 +754,7 @@ const app = createApp({
             }
           }
         });
-  
+
         if (results.length > 0) {
           const latest = results.sort((a, b) => 
             new Date(b.value.published) - new Date(a.value.published)
@@ -753,6 +769,8 @@ const app = createApp({
           
           this.profile.name = this.savedProfile.name;
           this.profile.pronouns = this.savedProfile.pronouns;
+          
+          localStorage.setItem(localStorageKey, JSON.stringify(this.savedProfile));
         }
       } catch (error) {
         console.error("Error loading profile:", error);
@@ -875,7 +893,10 @@ app.use(GraffitiPlugin, {
     stateStorageKey: 'graffiti-local-state',
     persist: true,
     autoSave: true,
-    saveInterval: 1000
+    saveInterval: 1000,
+    initialState: localStorage.getItem('graffiti-local-state') 
+      ? JSON.parse(localStorage.getItem('graffiti-local-state'))
+      : []
   })
 })
 // app.use(GraffitiPlugin, {
