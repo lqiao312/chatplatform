@@ -494,10 +494,22 @@ audio::-webkit-media-controls-panel {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
 
 .expand-btn:hover {
   animation: bounce 0.5s ease;
+}
+
+.expandable-text {
+  cursor: pointer;
+}
+
+.expand-btn svg {
+  width: 1rem;                   
+  height: 1rem;            
+  stroke: var(--expander-icon-color); 
+  fill: none;                    
 }
 
 /* Keyframes */
@@ -603,10 +615,6 @@ audio::-webkit-media-controls-panel {
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 100%;
-  cursor: pointer;
-}
-
-.expandable-text {
   cursor: pointer;
 }
 
@@ -722,4 +730,71 @@ audio::-webkit-media-controls-panel {
   background: #ef4444;
   color: white;
   transform: scale(1.1);
+}
+
+.auth-section {
+  margin: 1rem 0;
+  padding: 1rem;
+  background: var(--color-surface);
+  border-radius: var(--radius);
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between; /* This will push items to the sides */
+  align-items: center;
+}
+
+.user-info {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  flex-grow: 1;
+}
+
+.user-info p {
+  margin: 0;
+  white-space: nowrap;
+}
+
+.user-info strong {
+  color: var(--color-primary); 
+}
+
+.user-info button {
+  margin-left: auto; 
+}
+
+.speech-status {
+  font-size: 0.8rem;
+  color: #666;
+  margin-top: 0.25rem;
+}
+
+button[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Visual feedback when listening */
+.listening {
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+  70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+}
+
+.message-text.truncated {
+  position: relative;
+}
+
+.message-text.truncated::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 1.5em;
+  background: linear-gradient(to bottom, rgba(255,255,255,0), var(--color-surface) 75%);
 }

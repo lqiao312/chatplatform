@@ -1,19 +1,20 @@
 import { createApp, Transition, TransitionGroup } from 'vue';
-// import { GraffitiRemote } from "@graffiti-garden/implementation/remote";
+import { GraffitiRemote } from "@graffiti-garden/implementation-remote";
 import { GraffitiLocal } from "@graffiti-garden/implementation-local";
 import { GraffitiPlugin } from "@graffiti-garden/wrapper-vue";
 
 const UsernameDisplay = {
-  props: ["actor"],
+  props: ["actor", "name"],
   computed: {
     username() {
+      if (this.name) return this.name;
+      
+      if (!this.actor) return 'anonymous';
+      
       try {
-        const { pathname } = new URL(this.actor);
-        const segments = pathname.split("/").filter(Boolean);
-        return segments.length ? segments.at(-1) : this.actor;
+        return this.actor.split(':').pop() || 'user';
       } catch {
-        const m = this.actor.match(/([^/:#]+)(?=[#\/]*$)/);
-        return m ? m[1] : this.actor;
+        return 'user';
       }
     },
   },
@@ -70,10 +71,36 @@ const app = createApp({
 
       likedMessages: new Set(),
       expandedMessages: new Set(),
+
+      useLocalStorage: true,
+      isListening: false,
+      recognition: null,
+      interimTranscript: '',
+      finalTranscript: '',
+      speechSupported: false
     };
   },
 
   computed: {
+    currentUsername() {
+      const session = this.$graffitiSession?.value;
+      if (!session) return "";
+      
+      if (this.savedProfile.name) return this.savedProfile.name;
+      
+      if (session.name) return session.name;
+      
+      const actor = session.actor ?? "";
+      try {
+        const { pathname } = new URL(actor);
+        const segments = pathname.split("/").filter(Boolean);
+        return segments.length ? segments.at(-1) : actor;
+      } catch {
+        const m = actor.match(/([^/:#]+)(?=[#\/]*$)/);
+        return m ? m[1] : actor;
+      }
+    },
+
     groupName() {
       if (this.groupNameOverride) return this.groupNameOverride.name;
       return this.selectedGroupObject?.value?.object?.name || "Unnamed Group";
@@ -118,14 +145,15 @@ const app = createApp({
     },
 
     username() {
-      const actor = this.$graffitiSession?.value?.actor ?? "";
+      const session = this.$graffitiSession?.value;
+      if (!session) return "anonymous";
+      
+      if (session.name) return session.name;
+      
       try {
-        const { pathname } = new URL(actor);
-        const segments = pathname.split("/").filter(Boolean);
-        return segments.length ? segments.at(-1) : actor;
+        return session.actor.split(':').pop() || 'user';
       } catch {
-        const m = actor.match(/([^/:#]+)(?=[#\/]*$)/);
-        return m ? m[1] : actor;
+        return 'user';
       }
     },
 
@@ -146,25 +174,110 @@ const app = createApp({
     },
   },
 
+  async mounted() {
+    this.loadFromLocalStorage();
+    
+    this.speechSupported = 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window;
+    
+    if (this.speechSupported) {
+      this.initSpeechRecognition();
+    }
+
+    if (this.$graffitiSession.value) {
+      await this.loadProfile();
+    }
+    
+    this.$watch(
+      () => JSON.stringify(this.$graffiti.state),
+      (newVal) => {
+        localStorage.setItem('graffitiLocalData', newVal);
+      },
+      { deep: true }
+    );
+  },
+
   methods: {
-    // startLogin() {
-    //   const redirect = window.location.origin + window.location.pathname;
-    //   this.$graffiti.login({
-    //     oidcIssuer:  'https://broker.pod.inrupt.com/',
-    //     clientName:  'DesignFTW Chat',
-    //     redirectUrl: redirect
-    //   });
-    // },
-    startLogin() {
-      this.$graffiti.login({
-        actor: `local-user-${Math.random().toString(36).substring(2, 9)}`,
-        name: 'Local User'
-      });
+    async login() {
+      try {
+        const username = prompt("Enter your username:");
+        if (!username) return;
+        
+        this.$graffitiSession.value = null;
+        
+        await this.$graffiti.login({
+          actor: `user:${username}`,
+          name: username,
+          credentials: { type: 'local' }
+        });
+
+        await this.refreshGroups();
+        await this.loadProfile();
+        
+        this.$forceUpdate();
+        
+      } catch (err) {
+        console.error('Login failed', err);
+        this.$graffitiSession.value = null;
+      }
+    },
+
+    async logout() {
+      try {
+        this.currentGroup = null;
+        this.channels = ["designftw"];
+        this.myMessage = "";
+        this.showProfileEditor = false;
+        
+        this.savedProfile = { name: '', pronouns: '', published: null };
+        this.hasSavedProfile = false;
+        this.profile = { name: "", pronouns: "", loaded: false, error: null };
+        
+        localStorage.clear();
+        
+        if (this.$graffiti && typeof this.$graffiti.logout === 'function') {
+          try {
+            await this.$graffiti.logout();
+          } catch (logoutError) {
+            console.warn('Graffiti logout failed:', logoutError);
+          }
+        }
+        
+        this.$graffitiSession.value = null;
+        
+        window.location.reload();
+        
+      } catch (err) {
+        console.error('Logout failed:', err);
+        this.$graffitiSession.value = null;
+      }
+    },
+
+    saveToLocalStorage() {
+      if (this.useLocalStorage) {
+        localStorage.setItem('graffitiLocalData', JSON.stringify(this.$graffiti.state));
+        localStorage.setItem('graffiti-local-state', JSON.stringify(this.$graffiti.state));
+      }
+    },
+
+    loadFromLocalStorage() {
+      if (this.useLocalStorage) {
+        const data = localStorage.getItem('graffiti-local-state') || 
+                    localStorage.getItem('graffitiLocalData');
+        if (data) {
+          try {
+            this.$graffiti.state = JSON.parse(data);
+          } catch (e) {
+            console.error("Failed to load localStorage data:", e);
+          }
+        }
+      }
     },
 
     shouldTruncate(content) {
-      return content && content.length > 10;
-    },
+    if (!content) return false;
+    const lineCount = content.split('\n').length;
+    return lineCount > 3 || content.length > 150;
+  },
     
     isExpanded(message) {
       return this.expandedMessages.has(message.url);
@@ -181,7 +294,7 @@ const app = createApp({
     },
     
     truncateGroupName(name) {
-      const maxLength = 15; // Increased from 10 for better visibility
+      const maxLength = 15;
       return name.length > maxLength ? `${name.substring(0, maxLength)}...` : name;
     },
 
@@ -273,19 +386,35 @@ const app = createApp({
       }
     },
 
+    // async transcriptMessage(m) {
+    //    if (!m.value.audio) return;
+    //    try {
+    //     const res = await fetch('/api/transcribe', {
+    //       method: 'POST',
+    //       headers: { 'Content-Type': 'application/json' },
+    //       body: JSON.stringify({ audio: m.value.audio })
+    //     });
+    //     const body = await res.json();
+    //     this.transcripts[m.url] = body.transcript;
+    //   } catch (err) {
+    //     alert('Sorry, could not generate transcript.');
+    //   }
+    // },
+
     async transcriptMessage(m) {
-       if (!m.value.audio) return;
-       try {
-        const res = await fetch('/api/transcribe', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ audio: m.value.audio })
-        });
-        const body = await res.json();
-        this.transcripts[m.url] = body.transcript;
-      } catch (err) {
-        alert('Sorry, could not generate transcript.');
-      }
+        if (!m.value.audio) return;
+        try {
+            this.transcripts[m.url] = "This is a mock transcript of the audio message.";
+            
+            const mockResponse = {
+                transcript: "This is a mock transcript of the audio message."
+            };
+            this.transcripts[m.url] = mockResponse.transcript;
+            
+        } catch (err) {
+            console.error('Transcript error:', err);
+            this.transcripts[m.url] = "Error generating transcript";
+        }
     },
 
     openAudioPopup(src) {
@@ -395,11 +524,20 @@ const app = createApp({
           schema: this.createSchema
         });
         
+        if (!response || response.length === 0) {
+          const localData = localStorage.getItem('graffiti-local-state');
+          if (localData) {
+            this.$graffiti.state = JSON.parse(localData);
+            return;
+          }
+        }
+        
         this.groups = response
           .filter(item => item?.value?.activity === "Create")
           .sort((a, b) => b.value.published - a.value.published);
         
       } catch (error) {
+        console.error("Error loading groups:", error);
         this.groupOperations.error = "Failed to load groups";
       }
     },
@@ -426,16 +564,16 @@ const app = createApp({
           this.groupOperations.error = "Invalid input";
           return;
         }
-    
+
         if (this.selectedGroupObject) {
           this.selectedGroupObject.value.object.name = name;
           this.groupNameOverride = { name };
         }
-    
+
         const groupIndex = this.groups.findIndex(
           g => g?.value?.object?.channel === this.currentGroup
         );
-    
+
         if (groupIndex !== -1) {
           const updatedGroup = {
             ...this.groups[groupIndex],
@@ -447,17 +585,18 @@ const app = createApp({
               }
             }
           };
-    
+
           this.groups.splice(groupIndex, 1, updatedGroup);
           
           await this.$graffiti.put(updatedGroup, session);
           
-          this.$emit('show-notification', 'Group name updated successfully');
+          this.saveToLocalStorage();
         }
-    
+
         this.editGroupName = "";
         
       } catch (error) {
+        console.error("Update failed:", error);
         this.groupOperations.error = "Failed to update group name";
       } finally {
         this.groupOperations.loading = false;
@@ -475,15 +614,18 @@ const app = createApp({
 
       const session = this.$graffitiSession?.value;
       if (!session) return;
-  
+
       await this.$graffiti.put(
         {
-          value: { content: text, published: Date.now() },
+          value: { 
+            content: text,
+            published: Date.now(),
+            actorName: session.name
+          },
           channels: this.channels
         },
-         session
+        session
       );
-  
       this.myMessage = "";
     },
 
@@ -543,33 +685,34 @@ const app = createApp({
         
         const session = this.$graffitiSession?.value;
         if (!session) throw new Error("Not authenticated");
-  
+
         const name = this.profile.name.trim();
         const pronouns = this.profile.pronouns.trim();
-  
+
         if (!name) throw new Error("Name is required");
-  
+
         const profileObj = {
           type: "Profile",
           name: name,
           pronouns: pronouns,
           published: new Date().toISOString()
         };
-  
+
         await this.$graffiti.put({
           value: profileObj,
           channels: [session.actor]
         }, session);
-  
+
+        await this.$graffiti.save();
+
         this.savedProfile = {
           name: name,
           pronouns: pronouns,
           published: profileObj.published
         };
         this.hasSavedProfile = true;
-  
-        this.profile.name = "";
-        this.profile.pronouns = "";
+
+        this.showProfileEditor = false;
         
       } catch (error) {
         this.profile.error = error.message;
@@ -618,10 +761,70 @@ const app = createApp({
   
     formatProfileDate(dateString) {
       return new Date(dateString).toLocaleString();
+    },
+
+    initSpeechRecognition() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    this.recognition = new SpeechRecognition();
+    this.recognition.continuous = true;
+    this.recognition.interimResults = true;
+    this.recognition.lang = 'en-US';
+
+    this.recognition.onresult = (event) => {
+      this.interimTranscript = '';
+      this.finalTranscript = '';
+      
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          this.finalTranscript += transcript;
+          this.myMessage = this.finalTranscript;
+        } else {
+          this.interimTranscript += transcript;
+          this.myMessage = this.interimTranscript;
+        }
+      }
+    };
+
+    this.recognition.onerror = (event) => {
+      console.error('Speech recognition error', event.error);
+      this.isListening = false;
+    };
+
+    this.recognition.onend = () => {
+      if (this.isListening) {
+        this.recognition.start();
+      }
+    };
+  },
+
+  toggleSpeechRecognition() {
+    if (!this.speechSupported) {
+      alert("Speech recognition is not supported in your browser");
+      return;
     }
+
+    this.isListening = !this.isListening;
+    if (this.isListening) {
+      this.recognition.start();
+      this.$refs.messageInput.focus();
+    } else {
+      this.recognition.stop();
+      if (this.finalTranscript) {
+        this.sendMessage();
+      }
+    }
+  },
   },
 
   watch: {
+    '$graffiti.state': {
+      handler(newVal) {
+        localStorage.setItem('graffiti-local-state', JSON.stringify(newVal));
+      },
+      deep: true
+    },
+
     selectedGroupObject: {
       handler(newGroup) {
         if (newGroup) {
@@ -631,15 +834,29 @@ const app = createApp({
       immediate: true
     },
 
+    '$graffiti.state': {
+      handler() {
+        this.saveToLocalStorage();
+      },
+      deep: true
+    },
+
     "$graffitiSession.value": {
-      handler(session) {
-        if (session) {
-          this.loadProfile();
-        } else {
+      handler(newSession) {
+        if (newSession) {
           this.profile = {
             name: "",
             pronouns: "",
-            loading: false,
+            loaded: false,
+            error: null
+          };
+          this.loadProfile();
+        } else {
+          // Clear profile when session is null
+          this.profile = {
+            name: "",
+            pronouns: "",
+            loaded: false,
             error: null
           };
         }
@@ -648,13 +865,33 @@ const app = createApp({
     }
   },
 })
-
 app.component('Transition', Transition);
 app.component('TransitionGroup', TransitionGroup);
+app.component("username-display", UsernameDisplay);
 
-app.component("username-display", UsernameDisplay)
-.use(GraffitiPlugin, {
-  graffiti: new GraffitiLocal(),
-  // graffiti: new GraffitiRemote(),
+app.use(GraffitiPlugin, {
+  graffiti: new GraffitiLocal({
+    sessionStorageKey: 'graffiti-local-session',
+    stateStorageKey: 'graffiti-local-state',
+    persist: true,
+    autoSave: true,
+    saveInterval: 1000
+  })
 })
-.mount("#app");
+// app.use(GraffitiPlugin, {
+//     // graffiti: new GraffitiRemote(),
+//     graffiti: new GraffitiLocal(),
+// })
+// app.use(GraffitiPlugin, {
+//   graffiti: new GraffitiRemote({
+//     server: "https://graffiti.garden",
+//     auth: {
+//       oidcIssuer: 'https://login.inrupt.com',  // Updated issuer
+//       clientName: 'DesignFTW Chat',
+//       redirectUrl: window.location.href,       // Dynamic URL
+//       clientId: '7a7342c6-7a6d-4f0a-9b61-3f0a1b2c4d5e', // Public test ID
+//       usePKCE: true,
+//     }
+//   })
+// })
+.mount("#app"); 

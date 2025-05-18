@@ -6,14 +6,15 @@
   <title>DesignFTW • Remote Chat</title>
 
   <script type="importmap">
-  {
-    "imports": {
-      "vue": "https://cdn.jsdelivr.net/npm/vue@3.5.13/dist/vue.esm-browser.js",
-      "@graffiti-garden/implementation-local": "https://cdn.jsdelivr.net/npm/@graffiti-garden/implementation-local@0.6.4/dist/browser/index.js",
-      "@graffiti-garden/wrapper-vue": "https://cdn.jsdelivr.net/npm/@graffiti-garden/wrapper-vue@0.7.2/dist/browser/plugin.mjs"
-    }
-  }
-  </script>
+        {
+            "imports": {
+                "vue": "https://cdn.jsdelivr.net/npm/vue@3.5.13/dist/vue.esm-browser.js",
+                "@graffiti-garden/implementation-local": "https://cdn.jsdelivr.net/npm/@graffiti-garden/implementation-local@0.6.4/dist/browser/index.js",
+                "@graffiti-garden/implementation-remote": "https://cdn.jsdelivr.net/npm/@graffiti-garden/implementation-remote@0.6.2/dist/browser/index.js",
+                "@graffiti-garden/wrapper-vue": "https://cdn.jsdelivr.net/npm/@graffiti-garden/wrapper-vue@0.7.2/dist/browser/plugin.mjs"
+            }
+        }
+    </script>
 
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -21,11 +22,19 @@
   <div id="app">
     <h1>ChatRoom</h1>
     
-    <button v-if="!$graffitiSession.value" @click="startLogin()">Log In</button>
-    <button v-else @click="$graffiti.logout($graffitiSession.value)">Log Out</button>
-    <p v-if="$graffitiSession.value">
-      Logged in as <username-display :actor="$graffitiSession.value.actor" />
-    </p>
+    <div class="auth-section">
+      <button 
+        v-if="!$graffitiSession.value" 
+        @click="login()"
+      >
+        Log In
+      </button>
+      
+      <div v-else class="user-info">
+        <p>Logged in as: <strong>{{ username }}</strong></p>
+        <button @click="logout()">Log Out</button>
+      </div>
+    </div>
 
     <div v-if="$graffitiSession.value">
       <div class="top-right">
@@ -96,10 +105,16 @@
           </header>
 
           <form @submit.prevent="sendMessage">
-            <input v-model="myMessage" placeholder="Message" />
+            <input v-model="myMessage" placeholder="Message" ref="messageInput" 
+                  :class="{ 'listening': isListening }" />
             <button type="submit" :disabled="isRecording">Send</button>
-            <button type="button" v-if="!isRecording" @click="startRecording">🎤 Record</button>
-            <button type="button" v-else @click="stopRecording">■ Stop & Send</button>
+            <!-- <button type="button" @click="toggleSpeechRecognition" :disabled="isRecording"
+                    :class="{ 'listening': isListening }">
+              {{ isListening ? '🛑 Stop Listening' : '🎤 Speak' }}
+            </button> -->
+            <button type="button" v-if="!isRecording" @click="startRecording">🎤 Record Audio</button>
+            <button type="button" v-else @click="stopRecording">■ Stop & Send Audio</button>
+            <div v-if="isListening" class="speech-status">Listening... Speak now</div>
           </form>
 
           <graffiti-discover
@@ -108,17 +123,12 @@
             :schema="msgSchema"
           >
             <transition-group name="fade" tag="ul" class="message-list">
-              <li
-              v-for="m in msgs.sort((a, b) => b.value.published - a.value.published)"
-              :key="m.url"
-              class="message-item"
-              :class="{'has-audio': m.value.audio}"
-            >
+              <li v-for="m in msgs.sort((a, b) => b.value.published - a.value.published)" :key="m.url" class="message-item" :class="{'has-audio': m.value.audio}">
               <div class="message-content">
                 <div class="message-header">
-                  <username-display :actor="m.actor" />
+                  <username-display :actor="m.actor" :name="m.value.actorName" />
                 </div>
-            
+
                 <div class="message-body">
                   <template v-if="m.value.audio">
                     <div class="audio-message-wrapper">
@@ -139,23 +149,30 @@
                       </button>
                     </div>
                   </template>
-            
+
                   <template v-else>
                     <div class="message-text-container">
                       <span 
-                        class="message-text"
-                        :class="{truncated: shouldTruncate(m.value.content) && !isExpanded(m)}"
-                        @click="toggleMessageExpand(m)"
+                        :class="{
+                          'message-text': true,
+                          'truncated': shouldTruncate(m.value.content) && !isExpanded(m),
+                          'full-text': isExpanded(m) || !shouldTruncate(m.value.content)
+                        }"
+                        @click="shouldTruncate(m.value.content) ? toggleMessageExpand(m) : null"
                       >
                         {{ m.value.content }}
+                        <span 
+                          v-if="shouldTruncate(m.value.content) && !isExpanded(m)" 
+                          class="ellipsis"
+                        >...</span>
                       </span>
                     </div>
                   </template>
-            
+
                   <div class="message-timestamp">
                     {{ new Date(m.value.published).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}
                   </div>
-            
+
                   <p v-if="transcripts[m.url]" class="message-transcript">
                     {{ transcripts[m.url] }}
                   </p>
